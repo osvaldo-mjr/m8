@@ -15,10 +15,17 @@ export interface AppOptions {
   /** Instance character opening every table code this process issues. */
   readonly shard?: string
   readonly seed?: number
+  /**
+   * Request logging. On by default: a server running on the LAN with no log
+   * is a server whose only diagnosis is a television that went blank. Off is
+   * for the test suite, which otherwise interleaves a JSON line per request
+   * with its own output and hides the thing being read.
+   */
+  readonly logger?: boolean
 }
 
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true })
+  const app = Fastify({ logger: options.logger ?? true })
 
   const registry = new TableRegistry({
     clock: new SystemClock(),

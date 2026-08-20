@@ -41,7 +41,7 @@ describe('buildApp routing', () => {
     phoneRoot = makeFixtureRoot('m8-phone-', {
       'index.html': '<html><body>phone-index</body></html>',
     })
-    app = await buildApp({ tvRoot, phoneRoot, seed: 2026 })
+    app = await buildApp({ tvRoot, phoneRoot, seed: 2026, logger: false })
   })
 
   afterAll(async () => {
@@ -136,7 +136,7 @@ describe('buildApp shutdown', () => {
     async () => {
       const tvRoot = makeFixtureRoot('m8-tv-close-', { 'index.html': '<html></html>' })
       const phoneRoot = makeFixtureRoot('m8-phone-close-', { 'index.html': '<html></html>' })
-      const app = await buildApp({ tvRoot, phoneRoot, seed: 1 })
+      const app = await buildApp({ tvRoot, phoneRoot, seed: 1, logger: false })
 
       try {
         await app.listen({ port: 0, host: '127.0.0.1' })
@@ -176,4 +176,41 @@ describe('buildApp shutdown', () => {
     },
     10_000,
   )
+})
+
+describe('buildApp logging', () => {
+  let tvRoot: string
+  let phoneRoot: string
+
+  beforeAll(() => {
+    tvRoot = makeFixtureRoot('m8-tv-log-', { 'index.html': '<html></html>' })
+    phoneRoot = makeFixtureRoot('m8-phone-log-', { 'index.html': '<html></html>' })
+  })
+
+  afterAll(() => {
+    rmSync(tvRoot, { recursive: true, force: true })
+    rmSync(phoneRoot, { recursive: true, force: true })
+  })
+
+  it('logs by default, because a server nobody can see is a server nobody can diagnose', async () => {
+    const app = await buildApp({ tvRoot, phoneRoot, seed: 3 })
+    try {
+      // A real pino instance reports a level; Fastify's no-op logger has none.
+      expect(app.log.level).toBe('info')
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('can be silenced, so a test suite is not drowned in its own request JSON', async () => {
+    const app = await buildApp({ tvRoot, phoneRoot, seed: 3, logger: false })
+    try {
+      expect(app.log.level).toBeUndefined()
+      // Still a usable logger, not a missing one: app.log is called from
+      // inside buildApp itself, so silencing must not mean removing.
+      expect(typeof app.log.info).toBe('function')
+    } finally {
+      await app.close()
+    }
+  })
 })
