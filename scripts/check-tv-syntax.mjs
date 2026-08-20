@@ -33,10 +33,14 @@ function jsFiles(dir) {
   return found
 }
 
-function main() {
-  const files = jsFiles(TV_DIST)
+// `tvDist` is overridable via a CLI argument (`process.argv[2]`) so tests can
+// point the guard at a disposable fixture directory instead of the real
+// `apps/tv/dist`. `npm run guard:syntax` passes no argument, so the default
+// still governs normal use.
+function main(tvDist) {
+  const files = jsFiles(tvDist)
   if (files.length === 0) {
-    throw new Error(`No JavaScript found in ${TV_DIST}. Run the build first.`)
+    throw new Error(`No JavaScript found in ${tvDist}. Run the build first.`)
   }
   for (const file of files) {
     assertEs2017(readFileSync(file, 'utf8'), file)
@@ -49,5 +53,5 @@ function main() {
 // rather than string-concatenating a `file://` prefix onto it — the naive
 // comparison silently never matches there, and `main()` never runs.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main()
+  main(process.argv[2] ?? TV_DIST)
 }

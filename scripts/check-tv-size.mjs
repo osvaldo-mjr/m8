@@ -16,10 +16,29 @@ function assetFiles(dir) {
   return found
 }
 
-function main() {
-  const files = assetFiles(TV_DIST)
-  if (files.length === 0) {
-    throw new Error(`No JS or CSS found in ${TV_DIST}. Run the build first.`)
+/**
+ * Which of "JavaScript" and "CSS" are entirely absent from `files`. A build
+ * that emits CSS but no JavaScript (or the reverse) is not a passing build —
+ * `assetFiles` matching `.js` *or* `.css` must not let that report a
+ * plausible, comfortably-under-budget total while the bundle that actually
+ * matters was never produced.
+ */
+function missingAssetKinds(files) {
+  const missing = []
+  if (!files.some((file) => file.endsWith('.js'))) missing.push('JavaScript')
+  if (!files.some((file) => file.endsWith('.css'))) missing.push('CSS')
+  return missing
+}
+
+// `tvDist` is overridable via a CLI argument (`process.argv[2]`) so tests can
+// point the guard at a disposable fixture directory instead of the real
+// `apps/tv/dist`. `npm run guard:size` passes no argument, so the default
+// still governs normal use.
+function main(tvDist) {
+  const files = assetFiles(tvDist)
+  const missing = missingAssetKinds(files)
+  if (missing.length > 0) {
+    throw new Error(`No ${missing.join(' and no ')} found in ${tvDist}. Run the build first.`)
   }
 
   const budget = JSON.parse(readFileSync('budget.json', 'utf8'))
@@ -44,5 +63,5 @@ function main() {
 // rather than string-concatenating a `file://` prefix onto it — the naive
 // comparison silently never matches there, and `main()` never runs.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main()
+  main(process.argv[2] ?? TV_DIST)
 }
