@@ -82,3 +82,41 @@ largest unknown in the whole platform. It is survivable either way: the
 `Transport` interface exists precisely so that replacing Socket.IO with
 something the set's browser tolerates better is writing one class, not
 redesigning the platform.
+
+## Results
+
+Record every run here, passed or failed. An unrecorded pass is a risk nobody
+can prove was retired.
+
+### 2026-08-20 — Samsung (model and year pending) — PASSED
+
+Run over `npm run docker`, container publishing port 3000, two phones joining
+from the house network.
+
+Confirmed by the operator:
+
+- The page rendered on the television.
+- The QR code rendered and scanned from a phone.
+- Two phones joined and appeared on the screen.
+- Avatars rendered as glyphs, not as missing-character boxes — the one thing
+  no automated test can check, since emoji coverage on this browser generation
+  is not guaranteed.
+- The QR did not flicker when participants joined or changed their profile,
+  confirming the reuse fix rather than the rebuild-every-message behaviour.
+- The screen updated promptly as phones acted.
+
+**This retires the design document's largest named risk.** The large-screen
+target was calibrated for Chromium 68-79 from documentation rather than
+experiment; it now has one confirming experiment behind it.
+
+Not yet exercised in this run, and still open:
+
+- Step 5, the overscan check — that nothing is cropped at the edges.
+- Step 8, reloading the television and rejoining the same table.
+- Step 9, toggling phone Wi-Fi to see disconnect and reconnect on screen.
+- Whether the Socket.IO transport settled on WebSocket or fell back to long
+  polling. Worth capturing from the server log on the next run: the fallback
+  working is good news, but knowing which one is in use tells us how much
+  headroom the transport choice actually bought.
+
+The set's model and firmware year are still to be filled in.
