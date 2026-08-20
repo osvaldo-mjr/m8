@@ -53,8 +53,20 @@ export class FakeTransport implements Transport {
     return entry.connection
   }
 
+  /**
+   * Delivers an inbound message as if it had arrived over the wire. Refuses
+   * once the connection is closed, because the real adapter cannot deliver
+   * one either: Socket.IO stops emitting for a socket the moment it
+   * disconnects. Allowing it here would let a test drive the platform into a
+   * state production can never reach, which is precisely the divergence this
+   * fake exists to avoid.
+   */
   receive(id: string, raw: unknown): void {
-    this.#onMessage(this.#require(id).connection, raw)
+    const entry = this.#require(id)
+    if (!entry.open) {
+      throw new Error(`Connection is closed and cannot receive: ${id}`)
+    }
+    this.#onMessage(entry.connection, raw)
   }
 
   disconnect(id: string): void {

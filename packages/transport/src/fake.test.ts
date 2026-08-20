@@ -139,6 +139,33 @@ describe('FakeTransport', () => {
     const transport = new FakeTransport()
     expect(() => transport.receive('ghost', { type: 'leave' })).toThrow(/ghost/)
   })
+
+  // The real adapter cannot do this: Socket.IO stops delivering the moment a
+  // socket disconnects, so a message arriving from a closed connection is not
+  // a scenario production code can ever meet. A fake that allows it is a fake
+  // the platform can tell apart from the real thing, which is the one thing
+  // this class must never be.
+  it('refuses to deliver a message from a connection that has disconnected', () => {
+    const transport = new FakeTransport()
+    const handler = vi.fn()
+    transport.onMessage(handler)
+    transport.connect('phone-1')
+    transport.disconnect('phone-1')
+
+    expect(() => transport.receive('phone-1', { type: 'leave' })).toThrow(/closed/)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('refuses to deliver a message from a connection the platform closed', () => {
+    const transport = new FakeTransport()
+    const handler = vi.fn()
+    transport.onMessage(handler)
+    const connection = transport.connect('phone-1')
+    connection.close()
+
+    expect(() => transport.receive('phone-1', { type: 'leave' })).toThrow(/phone-1/)
+    expect(handler).not.toHaveBeenCalled()
+  })
 })
 
 describe('FakeTransport handler registration', () => {
