@@ -55,11 +55,14 @@ when it is a network-profile problem.
 4. Confirm the QR code renders and scans from a phone.
 5. Confirm nothing is cropped: the code and the QR are fully inside the
    screen (the 5% safe-margin budget exists for exactly this).
-6. Join from a phone and confirm the nickname appears on the television
-   within about a second.
-7. Reload the television page and confirm it rejoins the same table code
+6. Join from a phone and confirm the nickname and the chosen avatar appear
+   on the television within about a second, and that the avatar is
+   recognizable from three metres.
+7. While a second phone joins, watch the QR: it must stay put. A QR that
+   blinks each time somebody arrives is the image being refetched.
+8. Reload the television page and confirm it rejoins the same table code
    with the participant still listed.
-8. Turn the phone Wi-Fi off and on; confirm the television marks the
+9. Turn the phone Wi-Fi off and on; confirm the television marks the
    participant disconnected and then connected again.
 
 ## What to record on failure

@@ -161,8 +161,9 @@ Pyramid, no end-to-end tests (a deliberate decision — see the design document)
 - **CI guards**: TV bundle size budget, and emitted-syntax compatibility with the
   old target.
 
-CI runs on every push: install, typecheck, lint, test, build, both guards, and
-the Docker image build.
+CI runs on every push: install, typecheck, test, build, both guards, and the
+Docker image build. There is no linter — adding one is scope this milestone
+does not carry, and this file describes what exists.
 
 ## Scope
 
