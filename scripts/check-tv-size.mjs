@@ -35,10 +35,16 @@ function missingAssetKinds(files) {
 // `apps/tv/dist`. `npm run guard:size` passes no argument, so the default
 // still governs normal use.
 /**
- * The ceiling, normally from `budget.json`. Overridable so a test can prove
- * the guard actually *fails* a bundle that exceeds it: nothing else in the
- * suite pins the rejection path, and a size guard that never rejects is
- * indistinguishable from no guard at all. Real use passes no override.
+ * The ceiling, normally from `budget.json`. Overridable *only* by the second
+ * CLI argument, so a test can prove the guard actually *fails* a bundle that
+ * exceeds it: nothing else in the suite pins the rejection path, and a size
+ * guard that never rejects is indistinguishable from no guard at all.
+ *
+ * Deliberately not readable from the environment. A CLI argument is written
+ * at the call site and visible in the command that ran; an environment
+ * variable is invisible there, and one that raises a ceiling turns the whole
+ * guard into something any job can quietly opt out of. `npm run guard:size`
+ * passes no argument, so the budget file governs every real run.
  */
 function budgetBytes(override) {
   if (override === undefined) {
@@ -79,5 +85,5 @@ function main(tvDist, budgetOverride) {
 // rather than string-concatenating a `file://` prefix onto it — the naive
 // comparison silently never matches there, and `main()` never runs.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main(process.argv[2] ?? TV_DIST, process.argv[3] ?? process.env.M8_TV_BUDGET_BYTES)
+  main(process.argv[2] ?? TV_DIST, process.argv[3])
 }

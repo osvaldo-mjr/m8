@@ -29,6 +29,29 @@ describe('the guard script (subprocess)', () => {
     return spawnSync(process.execPath, args, { cwd: repoRoot, encoding: 'utf8' })
   }
 
+  /**
+   * Deterministic bytes that gzip barely at all, so a fixture can be made
+   * reliably larger than the real budget without depending on Math.random.
+   */
+  function incompressible(length: number): string {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/'
+    // xorshift32, kept in 32-bit integer arithmetic throughout: a plain
+    // multiplicative generator overflows JavaScript's safe integer range and
+    // degenerates into a short cycle, which gzip then compresses away — the
+    // opposite of what this fixture needs.
+    let state = 0x9e37_79b9
+    let out = ''
+    for (let i = 0; i < length; i += 1) {
+      state ^= state << 13
+      state >>>= 0
+      state ^= state >>> 17
+      state ^= state << 5
+      state >>>= 0
+      out += alphabet[state % alphabet.length]
+    }
+    return out
+  }
+
   function makeFixtureDir(files: Record<string, string>): string {
     const dir = mkdtempSync(join(tmpdir(), 'm8-tv-size-'))
     for (const [name, content] of Object.entries(files)) {
@@ -85,6 +108,29 @@ describe('the guard script (subprocess)', () => {
       })
       expect(result.status).not.toBe(0)
       expect(result.stderr).toMatch(/Budget override/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('cannot be loosened by an environment variable', () => {
+    // A ceiling that the environment can raise is not a ceiling. The CLI
+    // override stays — a test has to be able to drive the rejection path —
+    // but it is an argument the guard's own caller passes, visible in the
+    // command, and `npm run guard:size` passes none. An environment variable
+    // is invisible at the call site and would let any CI job quietly opt out
+    // of the budget the television actually has to live within.
+    const dir = makeFixtureDir({ 'main.js': incompressible(60_000), 'main.css': 'body{color:red}' })
+    try {
+      const result = spawnSync(process.execPath, [scriptPath, dir], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        env: { ...process.env, M8_TV_BUDGET_BYTES: '999999999' },
+      })
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toMatch(/over budget/)
+      // The real budget governed, not the one the environment asked for.
+      expect(result.stdout).not.toContain('999999999')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
