@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ParticipantSnapshot } from '@m8/protocol'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { renderTable } from './render.js'
+import { renderError, renderTable, renderWaiting } from './render.js'
 
 let root: HTMLElement
 
@@ -71,5 +71,46 @@ describe('renderTable', () => {
     renderTable(root, { code: 'KXTP', participants: [participant({ nickname: '' })] })
     const item = root.querySelector('li')
     expect(item?.textContent).toBe('…')
+  })
+})
+
+describe('renderWaiting', () => {
+  it('shows an initial waiting message', () => {
+    renderWaiting(root)
+    expect(root.textContent).toMatch(/opening|starting|waiting/i)
+  })
+
+  it('replaces previous content instead of appending', () => {
+    renderTable(root, { code: 'KXTP', participants: [participant()] })
+    renderWaiting(root)
+    expect(root.textContent).not.toContain('Ana')
+  })
+
+  it('renders nothing interactive', () => {
+    renderWaiting(root)
+    expect(root.querySelectorAll('button, a, input, [tabindex]')).toHaveLength(0)
+  })
+})
+
+describe('renderError', () => {
+  it('shows a failure message telling the room to reload', () => {
+    renderError(root, 'unknown-table')
+    expect(root.textContent).toMatch(/reload/i)
+  })
+
+  it('includes the error code for diagnosis', () => {
+    renderError(root, 'table-full')
+    expect(root.textContent).toContain('table-full')
+  })
+
+  it('replaces previous content instead of appending', () => {
+    renderTable(root, { code: 'KXTP', participants: [participant()] })
+    renderError(root, 'invalid-message')
+    expect(root.textContent).not.toContain('Ana')
+  })
+
+  it('renders nothing interactive', () => {
+    renderError(root, 'not-allowed')
+    expect(root.querySelectorAll('button, a, input, [tabindex]')).toHaveLength(0)
   })
 })
