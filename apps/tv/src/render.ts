@@ -50,7 +50,7 @@ export function renderTable(root: HTMLElement, view: TvView): void {
   root.textContent = ''
 
   const header = element('div', 'mb-16')
-  header.appendChild(element('p', 'text-3xl uppercase tracking-widest text-slate', 'Join the table'))
+  header.appendChild(element('p', 'text-3xl uppercase tracking-widest text-ash', 'Join the table'))
   header.appendChild(element('p', 'text-9xl font-black tracking-widest text-brass', view.code))
   root.appendChild(header)
 
@@ -111,5 +111,5 @@ export function renderError(root: HTMLElement, code: ErrorCode): void {
   root.textContent = ''
   root.appendChild(element('p', 'text-7xl font-black tracking-widest text-clay', 'Something went wrong'))
   root.appendChild(element('p', 'mt-8 text-4xl text-chalk', 'Reload this screen.'))
-  root.appendChild(element('p', 'mt-16 text-2xl tracking-widest text-slate', code))
+  root.appendChild(element('p', 'mt-16 text-2xl tracking-widest text-ash', code))
 }

@@ -12,7 +12,7 @@ export default {
         chalk: 'var(--m8-chalk)',
         brass: 'var(--m8-brass)',
         clay: 'var(--m8-clay)',
-        slate: 'var(--m8-slate)',
+        ash: 'var(--m8-ash)',
       },
     },
   },
