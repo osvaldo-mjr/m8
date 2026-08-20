@@ -12,12 +12,16 @@
     "apps/*"
   ],
   "scripts": {
+    "dev": "concurrently -n tv,phone,server -c blue,magenta,green \"npm run dev -w @m8/tv\" \"npm run dev -w @m8/phone\" \"npx tsx watch apps/server/src/main.ts\"",
+    "build": "npm run build -w @m8/tv && npm run build -w @m8/phone",
+    "lan": "npm run build && npx tsx apps/server/src/main.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "concurrently": "^10.0.5",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   }
