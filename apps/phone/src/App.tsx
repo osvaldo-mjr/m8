@@ -1,5 +1,5 @@
 import { AVATARS } from '@m8/avatars'
-import type { ErrorCode, ServerToClient, TableSnapshot } from '@m8/protocol'
+import { NICKNAME_MAX_LENGTH, type ErrorCode, type ServerToClient, type TableSnapshot } from '@m8/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { codeFromLocation, connectPhone, type PhoneClient } from './client.js'
 import { describeProfileSubmission } from './profile.js'
@@ -82,7 +82,7 @@ export function App() {
         <input
           id="nickname"
           className="rounded-lg bg-felt-700 p-4 text-xl"
-          maxLength={16}
+          maxLength={NICKNAME_MAX_LENGTH}
           value={nickname}
           onChange={(event) => setNickname(event.target.value)}
         />

@@ -1,4 +1,4 @@
-export { PROTOCOL_VERSION } from './messages.js'
+export { NICKNAME_MAX_LENGTH, PROTOCOL_VERSION } from './messages.js'
 export type {
   ClientToServer,
   ErrorCode,

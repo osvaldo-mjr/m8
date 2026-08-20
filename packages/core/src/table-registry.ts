@@ -7,6 +7,12 @@ import type { Rng } from './rng.js'
 import type { Participant, Table, TablePhase } from './table.js'
 import type { DomainError, ParticipantView, TableView } from './views.js'
 
+/**
+ * How many characters of a nickname are kept. The rule lives here, in the
+ * thing that does the truncating; `@m8/protocol` publishes a second copy for
+ * clients to read, because the phone must not import the domain to learn one
+ * number. `apps/server/src/limits.test.ts` fails if the two disagree.
+ */
 export const NICKNAME_MAX_LENGTH = 16
 
 /**

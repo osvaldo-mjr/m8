@@ -5,6 +5,20 @@
  */
 export const PROTOCOL_VERSION = 1
 
+/**
+ * How many characters of a nickname the server keeps. Part of the wire
+ * contract, not a piece of the domain: it is what a client needs in order to
+ * stop someone typing a name that will be silently truncated the moment it
+ * arrives.
+ *
+ * The rule itself lives in `@m8/core`, which does the truncating and never
+ * imports this package. This is a second copy on purpose — the phone must not
+ * pull the domain into a browser bundle to read one number — and
+ * `apps/server/src/limits.test.ts`, in the one place that sees both packages,
+ * fails if the two ever disagree.
+ */
+export const NICKNAME_MAX_LENGTH = 16
+
 export type ErrorCode =
   | 'unknown-table'
   | 'table-full'
