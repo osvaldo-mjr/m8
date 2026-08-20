@@ -1,0 +1,15 @@
+@import '@m8/tokens/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Overscan: many televisions crop the outer edge of the picture, so nothing
+ * may live in the outer 5%.
+ *
+ * Margins are used rather than flexbox gap, which needs Chromium 84.
+ */
+.m8-safe {
+  padding: var(--m8-safe-inset);
+}

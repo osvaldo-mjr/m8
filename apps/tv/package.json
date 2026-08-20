@@ -1,0 +1,22 @@
+{
+  "name": "@m8/tv",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@m8/protocol": "*",
+    "@m8/tokens": "*",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.5.4",
+    "jsdom": "^30.0.1",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^3.4.19",
+    "vite": "^8.2.2"
+  }
+}
