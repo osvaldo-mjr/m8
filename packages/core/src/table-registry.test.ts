@@ -49,6 +49,32 @@ describe('TableRegistry.createTable', () => {
   })
 })
 
+describe('TableRegistry.openTable', () => {
+  let registry: TableRegistry
+
+  beforeEach(() => {
+    registry = makeRegistry()
+  })
+
+  it('creates a fresh table when no code is given', () => {
+    const table = registry.openTable()
+    expect(table.phase).toBe('awaiting-host')
+    expect(registry.getTable(table.code)).toBe(table)
+  })
+
+  it('reopens the same table for a known code', () => {
+    const original = registry.createTable()
+    const reopened = registry.openTable(original.code)
+    expect(reopened).toBe(original)
+  })
+
+  it('creates a fresh table when the given code is unknown', () => {
+    const table = registry.openTable('ZZZZ')
+    expect(table.code).not.toBe('ZZZZ')
+    expect(registry.getTable(table.code)).toBe(table)
+  })
+})
+
 describe('TableRegistry.joinParticipant', () => {
   let registry: TableRegistry
   let code: string

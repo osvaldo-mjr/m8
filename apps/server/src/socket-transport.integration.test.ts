@@ -164,6 +164,62 @@ describe('the real Socket.IO transport', () => {
     expect(table.participants).toHaveLength(1)
   })
 
+  it('keeps a reconnected phone marked connected when its earlier socket drops later', async () => {
+    const { screen, code } = await openTable()
+
+    const firstSocket = connect()
+    await waitForConnect(firstSocket.socket)
+    firstSocket.socket.emit(CHANNEL, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    const firstWelcome = await waitForType(firstSocket.messages, 'welcome')
+
+    // The same phone rejoins on a fresh socket - the shape of a page reload -
+    // carrying the token the first connection was issued.
+    const secondSocket = connect()
+    await waitForConnect(secondSocket.socket)
+    secondSocket.socket.emit(CHANNEL, {
+      type: 'hello',
+      protocolVersion: PROTOCOL_VERSION,
+      code,
+      token: firstWelcome.token,
+    })
+    const secondWelcome = await waitForType(secondSocket.messages, 'welcome')
+    expect(secondWelcome.participantId).toBe(firstWelcome.participantId)
+
+    const screenMessagesBeforeDrop = screen.messages.length
+
+    // The stale first socket's disconnect arrives sometime after the
+    // reconnect - a real network teardown, not a deliberate leave. This is
+    // the ordering an in-memory fake cannot exercise: session.test.ts proves
+    // the same claim deterministically against FakeTransport, and this test
+    // proves it holds when the drop is a real, independently-timed socket
+    // event rather than a synchronous call.
+    firstSocket.socket.close()
+
+    // A bounded settle window, not a substitute for a condition: this
+    // assertion is about the *absence* of a wrongful broadcast, which cannot
+    // be expressed as "wait until X appears". The sibling "drops" test above
+    // establishes that a real disconnect is normally observed well within
+    // this budget, so anything that should have arrived already has.
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    const statesSinceReconnect = screen.messages
+      .slice(screenMessagesBeforeDrop)
+      .filter((m): m is Extract<ServerToClient, { type: 'tableState' }> => m.type === 'tableState')
+    for (const state of statesSinceReconnect) {
+      expect(state.table.participants).toHaveLength(1)
+      expect(state.table.participants[0]?.connected).toBe(true)
+    }
+
+    // And, right now, the table is still correct: exactly the reconnected
+    // participant, still connected.
+    const allStates = screen.messages.filter(
+      (m): m is Extract<ServerToClient, { type: 'tableState' }> => m.type === 'tableState',
+    )
+    const latest = allStates[allStates.length - 1]
+    expect(latest?.table.participants).toHaveLength(1)
+    expect(latest?.table.participants[0]?.connected).toBe(true)
+  })
+
   it('answers a malformed message with invalid-message instead of crashing', async () => {
     const phone = connect()
     await waitForConnect(phone.socket)

@@ -142,4 +142,50 @@ describe('a phone joining', () => {
 
     expect(transport.sentTo('phone')).toContainEqual({ type: 'error', code: 'invalid-message' })
   })
+
+  it('does not mark a participant disconnected when their earlier connection drops after a reconnect', () => {
+    const code = openTable()
+
+    transport.connect('phone-1')
+    transport.receive('phone-1', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    const token = firstOfType('phone-1', 'welcome').token
+
+    // The same phone rejoins on a fresh connection - a page reload - carrying
+    // the token issued to the first one.
+    transport.connect('phone-2')
+    transport.receive('phone-2', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code, token })
+
+    // The stale first connection's disconnect arrives after the reconnect
+    // already happened. It must not mark the still-live participant offline.
+    transport.disconnect('phone-1')
+
+    const states = transport.sentTo('tv').filter((m) => m.type === 'tableState')
+    const latest = states[states.length - 1]
+    expect(latest?.type === 'tableState' && latest.table.participants).toHaveLength(1)
+    expect(latest?.type === 'tableState' && latest.table.participants[0]?.connected).toBe(true)
+  })
+})
+
+describe('the TV-only invariant', () => {
+  it('rejects helloTable from a connection already joined as a phone', () => {
+    transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    const code = firstOfType('tv', 'tableReady').code
+
+    transport.connect('phone')
+    transport.receive('phone', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    transport.receive('phone', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+
+    expect(transport.sentTo('phone')).toContainEqual({ type: 'error', code: 'not-allowed' })
+  })
+
+  it('rejects hello from a connection already opened as a screen', () => {
+    transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    const code = firstOfType('tv', 'tableReady').code
+
+    transport.receive('tv', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+
+    expect(transport.sentTo('tv')).toContainEqual({ type: 'error', code: 'not-allowed' })
+  })
 })

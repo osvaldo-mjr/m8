@@ -24,6 +24,16 @@ export class Session {
   readonly #registry: TableRegistry
   readonly #attachments = new Map<string, Attachment>()
   readonly #connections = new Map<string, Connection>()
+  /**
+   * The connection currently entitled to speak for a participant. A rejoin
+   * on a fresh socket (a phone that reloaded) takes ownership immediately;
+   * the superseded connection's attachment is evicted at that moment, so
+   * when its own disconnect eventually arrives - anywhere up to Socket.IO's
+   * ping timeout later - there is no attachment left for it to act on.
+   * Without this, a stale socket's late disconnect marks a live, reconnected
+   * participant offline.
+   */
+  readonly #participantOwners = new Map<string, string>()
 
   constructor(transport: Transport, registry: TableRegistry) {
     this.#transport = transport
@@ -51,12 +61,19 @@ export class Session {
 
     switch (message.type) {
       case 'helloTable': {
+        // The TV only displays: a connection already speaking for a phone
+        // must not also become a screen.
+        const attachment = this.#attachments.get(connection.id)
+        if (attachment && attachment.role === 'phone') {
+          connection.send({ type: 'error', code: 'not-allowed' })
+          return
+        }
+
         if (message.protocolVersion !== PROTOCOL_VERSION) {
           connection.send({ type: 'reload', reason: 'protocol-version' })
           return
         }
-        const existing = message.code === undefined ? undefined : this.#registry.getTable(message.code)
-        const table = existing ?? this.#registry.createTable()
+        const table = this.#registry.openTable(message.code)
         this.#attachments.set(connection.id, { role: 'screen', code: table.code })
         connection.send({ type: 'tableReady', code: table.code })
         this.#broadcast(table)
@@ -64,6 +81,13 @@ export class Session {
       }
 
       case 'hello': {
+        // A screen never joins as a participant.
+        const existing = this.#attachments.get(connection.id)
+        if (existing && existing.role === 'screen') {
+          connection.send({ type: 'error', code: 'not-allowed' })
+          return
+        }
+
         if (message.protocolVersion !== PROTOCOL_VERSION) {
           connection.send({ type: 'reload', reason: 'protocol-version' })
           return
@@ -73,6 +97,8 @@ export class Session {
           connection.send({ type: 'error', code: translateError(result.error) })
           return
         }
+
+        this.#claimParticipant(result.participant.id, connection.id)
         this.#attachments.set(connection.id, {
           role: 'phone',
           code: result.table.code,
@@ -90,7 +116,7 @@ export class Session {
 
       case 'setProfile': {
         const attachment = this.#attachments.get(connection.id)
-        if (!attachment || attachment.participantId === undefined) {
+        if (!attachment || attachment.role !== 'phone' || attachment.participantId === undefined) {
           connection.send({ type: 'error', code: 'not-allowed' })
           return
         }
@@ -107,12 +133,23 @@ export class Session {
 
       case 'leave': {
         const attachment = this.#attachments.get(connection.id)
-        if (!attachment || attachment.participantId === undefined) return
+        if (!attachment || attachment.role !== 'phone' || attachment.participantId === undefined) return
+        this.#releaseParticipant(attachment.participantId, connection.id)
         const events = this.#registry.removeParticipant(attachment.code, attachment.participantId)
         this.#attachments.delete(connection.id)
         this.#applyEvents(events)
         this.#broadcastCode(attachment.code)
         return
+      }
+
+      default: {
+        // Exhaustiveness guard: parseInbound only ever returns one of the
+        // cases above today, but if ClientToServer or ScreenToServer grows a
+        // member without a matching case here, this line fails to typecheck
+        // instead of leaving a client waiting on a message nobody answers.
+        const unreachable: never = message
+        connection.send({ type: 'error', code: 'invalid-message' })
+        return unreachable
       }
     }
   }
@@ -123,9 +160,35 @@ export class Session {
     this.#connections.delete(connection.id)
     if (!attachment || attachment.participantId === undefined) return
 
+    // If a newer connection has already claimed this participant (a
+    // reconnect happened before this - possibly very late - disconnect
+    // arrived), this connection no longer speaks for anyone and must not
+    // mark the participant offline.
+    if (this.#participantOwners.get(attachment.participantId) !== connection.id) return
+
+    this.#participantOwners.delete(attachment.participantId)
     const events = this.#registry.disconnectParticipant(attachment.code, attachment.participantId)
     this.#applyEvents(events)
     this.#broadcastCode(attachment.code)
+  }
+
+  /**
+   * Records that `connectionId` now speaks for `participantId`, evicting
+   * whatever connection held that claim before - its attachment is removed
+   * so a disconnect arriving from it later is a no-op.
+   */
+  #claimParticipant(participantId: string, connectionId: string): void {
+    const previousOwner = this.#participantOwners.get(participantId)
+    if (previousOwner !== undefined && previousOwner !== connectionId) {
+      this.#attachments.delete(previousOwner)
+    }
+    this.#participantOwners.set(participantId, connectionId)
+  }
+
+  #releaseParticipant(participantId: string, connectionId: string): void {
+    if (this.#participantOwners.get(participantId) === connectionId) {
+      this.#participantOwners.delete(participantId)
+    }
   }
 
   /**

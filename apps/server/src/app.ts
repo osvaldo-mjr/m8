@@ -48,15 +48,32 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return reply.type('image/svg+xml').send(svg)
   })
 
-  app.get<{ Params: { code: string } }>('/:code', async (request, reply) => {
-    if (normalizeTableCode(request.params.code) === null) return reply.code(404).send()
+  // Not a route: `@fastify/static`'s wildcard is registered at `/`, and
+  // find-my-way ranks a parametric route (`/:code`) above that wildcard, so
+  // a literal `/:code` route here would capture every single-segment path —
+  // `/`, `/index.html`, `/main.js` — before the static plugin ever saw the
+  // request. Verified directly against this Fastify version and real static
+  // fixtures before relying on it: with a `/:code` route present, none of
+  // the large-screen's own assets resolved. Static assets must be given the
+  // chance to match first; only a path that matched nothing is worth testing
+  // against the code alphabet.
+  app.setNotFoundHandler(async (request, reply) => {
+    const candidate = request.url.split('?')[0]?.replace(/^\/+|\/+$/g, '') ?? ''
+    const code = normalizeTableCode(candidate)
+    if (code === null) return reply.code(404).send()
     return reply.sendFile('index.html', options.phoneRoot)
   })
 
   const transport = new SocketIoTransport(app.server)
   new Session(transport, registry)
 
-  app.addHook('onClose', async () => {
+  // Fastify's own server-closing hook is registered internally at `preReady`
+  // and hooks run last-registered-first, so an `onClose` hook added here
+  // would queue behind it — deadlocking `app.close()` for as long as any
+  // upgraded WebSocket stays open, since Fastify's hook waits for the
+  // underlying server to close first. `preClose` runs before Fastify closes
+  // the server, which is where socket teardown belongs.
+  app.addHook('preClose', async () => {
     await transport.close()
   })
 

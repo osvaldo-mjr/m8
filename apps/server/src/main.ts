@@ -14,8 +14,11 @@ for (const url of lanUrls(port, networkInterfaces())) {
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
-    // Draining, not killing: deploys bring up a new instance and stop routing
-    // new connections here, so this only fires once the table is empty.
+    // Not a drain: closing the Socket.IO server force-disconnects every open
+    // socket with a "server shutting down" reason, and app.close() stops
+    // accepting new HTTP connections at the same time. Any table still open
+    // at this point loses its screen and phones outright, rather than being
+    // allowed to finish.
     void app.close().then(() => process.exit(0))
   })
 }

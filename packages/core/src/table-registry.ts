@@ -96,6 +96,18 @@ export class TableRegistry {
     return this.#findMutable(code)
   }
 
+  /**
+   * What a screen presents when it opens: the table behind a remembered code
+   * if that table still exists, otherwise a new one. Whether an unknown or
+   * expired code should reopen a table or start over is a decision about
+   * tables, so it lives here rather than in the transport-facing layer that
+   * calls it.
+   */
+  openTable(code?: string): Table {
+    const existing = code === undefined ? undefined : this.#findMutable(code)
+    return existing ?? this.createTable()
+  }
+
   joinParticipant(code: string, token: string | undefined): JoinResult {
     const normalized = normalizeTableCode(code)
     if (normalized === null) return { error: 'invalid-code' }
