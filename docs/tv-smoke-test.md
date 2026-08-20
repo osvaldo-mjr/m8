@@ -70,9 +70,11 @@ when it is a network-profile problem.
 - The set's model and firmware year.
 - Whether the page rendered at all, or rendered with wrong colours or
   layout (screenshot or photograph if possible).
-- Whether the connection established. If it did not, check the server log:
-  it shows whether the Socket.IO transport fell back to long polling before
-  giving up entirely. **This is the single most diagnostic fact
+- Whether the connection established, and on which transport. The server
+  writes a `socket transport negotiated` line for every device, carrying
+  `transport` (`polling` or `websocket`) and `upgraded`. A device that
+  stays on `polling` never upgraded — that is the fallback doing its job,
+  and worth knowing. **This is the single most diagnostic fact
   available** — a television stuck on long-polling is a very different
   problem (proxying, WebSocket support) from one that never reaches the
   server at all (network profile, firewall, wrong URL).
@@ -114,9 +116,8 @@ Not yet exercised in this run, and still open:
 - Step 5, the overscan check — that nothing is cropped at the edges.
 - Step 8, reloading the television and rejoining the same table.
 - Step 9, toggling phone Wi-Fi to see disconnect and reconnect on screen.
-- Whether the Socket.IO transport settled on WebSocket or fell back to long
-  polling. Worth capturing from the server log on the next run: the fallback
-  working is good news, but knowing which one is in use tells us how much
-  headroom the transport choice actually bought.
+- Which transport the television negotiated. Not capturable on that run: the
+  server did not log it, despite this document telling the operator to look.
+  It does now — filter the log for `socket transport negotiated`.
 
 The set's model and firmware year are still to be filled in.

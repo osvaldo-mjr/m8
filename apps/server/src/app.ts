@@ -79,7 +79,12 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return reply.sendFile('index.html', options.phoneRoot)
   })
 
-  const transport = new SocketIoTransport(app.server)
+  // Socket.IO answers its own requests before Fastify's router, so nothing
+  // else in the log reveals whether a device is on WebSocket or fell back to
+  // long polling. The television smoke test asks the operator for exactly that.
+  const transport = new SocketIoTransport(app.server, (negotiation) => {
+    app.log.info(negotiation, 'socket transport negotiated')
+  })
   new Session(transport, registry)
 
   // Fastify's own server-closing hook is registered internally at `preReady`

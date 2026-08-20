@@ -5,7 +5,7 @@ import { PROTOCOL_VERSION, type ServerToClient, type TableSnapshot } from '@m8/p
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Session } from './session.js'
-import { SocketIoTransport } from './socket-transport.js'
+import { SocketIoTransport, type TransportNegotiation } from './socket-transport.js'
 
 /**
  * Proves the real Socket.IO adapter honours the same contract session.test.ts
@@ -25,6 +25,7 @@ let httpServer: HttpServer
 let transport: SocketIoTransport
 let baseUrl: string
 const clients: ClientSocket[] = []
+const negotiations: TransportNegotiation[] = []
 
 interface TrackedClient {
   readonly socket: ClientSocket
@@ -41,7 +42,8 @@ beforeEach(async () => {
     newToken: sequentialIds('t'),
     shard: 'A',
   })
-  transport = new SocketIoTransport(httpServer)
+  negotiations.length = 0
+  transport = new SocketIoTransport(httpServer, (n) => negotiations.push(n))
   new Session(transport, registry)
 
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve))
@@ -235,5 +237,36 @@ describe('the real Socket.IO transport', () => {
       phone.messages.filter((m) => m.type === 'error').find((m) => m.type === 'error' && m.code === 'unknown-table'),
     )
     expect(unknownTable).toEqual({ type: 'error', code: 'unknown-table' })
+  })
+})
+
+describe('the negotiated transport', () => {
+  it('is reported for every connection, so the log can answer the smoke test', async () => {
+    const screen = connect()
+    await waitForConnect(screen.socket)
+
+    await waitFor(() => negotiations.length > 0)
+
+    const first = negotiations[0]!
+    expect(first.connectionId).toBe(screen.socket.id)
+    expect(['polling', 'websocket']).toContain(first.transport)
+    expect(first.upgraded).toBe(false)
+  })
+
+  it('reports an upgrade separately from the handshake', async () => {
+    const screen = connect()
+    await waitForConnect(screen.socket)
+
+    // Socket.IO opens on polling by default and upgrades; either the handshake
+    // was already websocket, or an upgrade follows. Both are legitimate — the
+    // point is that whichever happened is written down.
+    await waitFor(
+      () => negotiations.some((n) => n.transport === 'websocket'),
+    ).catch(() => undefined)
+
+    for (const negotiation of negotiations) {
+      expect(negotiation.connectionId).toBe(screen.socket.id)
+    }
+    expect(negotiations.filter((n) => !n.upgraded)).toHaveLength(1)
   })
 })
