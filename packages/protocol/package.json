@@ -1,0 +1,10 @@
+{
+  "name": "@m8/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./validate": "./src/validate.ts"
+  }
+}
