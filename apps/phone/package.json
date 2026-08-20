@@ -8,6 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@m8/avatars": "*",
     "@m8/protocol": "*",
     "@m8/tokens": "*",
     "react": "^19.2.8",

@@ -1,6 +1,6 @@
-import type { TableSnapshot } from '@m8/protocol'
+import type { ErrorCode, TableSnapshot } from '@m8/protocol'
 import { describe, expect, it } from 'vitest'
-import { determineScreen } from './screen.js'
+import { determineScreen, errorText } from './screen.js'
 
 const tableWithoutNickname: TableSnapshot = {
   code: 'KXTP',
@@ -62,5 +62,31 @@ describe('determineScreen', () => {
 
   it('shows no-seat when previously present and now absent from the snapshot', () => {
     expect(determineScreen(tableWithoutParticipant, 'p1', null)).toEqual({ kind: 'no-seat' })
+  })
+})
+
+describe('errorText', () => {
+  const codes: ErrorCode[] = [
+    'unknown-table',
+    'invalid-code',
+    'table-full',
+    'not-allowed',
+    'invalid-message',
+  ]
+
+  it('tells the person where to look, for every error the wire can carry', () => {
+    for (const code of codes) {
+      expect(errorText(code)).toMatch(/scan the code on the screen/i)
+    }
+  })
+
+  it('never puts the wire code itself in front of a person', () => {
+    for (const code of codes) {
+      expect(errorText(code)).not.toContain(code)
+    }
+  })
+
+  it('says something different for a full table than for a closed one', () => {
+    expect(errorText('table-full')).not.toBe(errorText('unknown-table'))
   })
 })

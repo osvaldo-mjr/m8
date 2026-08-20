@@ -1,9 +1,9 @@
+import { AVATARS } from '@m8/avatars'
 import type { ErrorCode, ServerToClient, TableSnapshot } from '@m8/protocol'
 import { useEffect, useRef, useState } from 'react'
-import { AVATARS } from './avatars.js'
 import { codeFromLocation, connectPhone, type PhoneClient } from './client.js'
 import { describeProfileSubmission } from './profile.js'
-import { determineScreen } from './screen.js'
+import { determineScreen, errorText } from './screen.js'
 
 export function App() {
   const code = codeFromLocation(window.location.pathname)
@@ -13,7 +13,7 @@ export function App() {
   // Everything about *which screen* is shown is derived below from what the
   // server last sent, never from a flag this component sets itself.
   const [nickname, setNickname] = useState('')
-  const [avatarId, setAvatarId] = useState<string>(AVATARS[0].id)
+  const [avatarId, setAvatarId] = useState<string>(AVATARS[0]?.id ?? '')
 
   const [table, setTable] = useState<TableSnapshot | null>(null)
   const [participantId, setParticipantId] = useState<string | null>(null)
@@ -23,7 +23,14 @@ export function App() {
   useEffect(() => {
     if (code === null) return
     const phoneClient = connectPhone(code, (message: ServerToClient) => {
-      if (message.type === 'welcome') setParticipantId(message.participantId)
+      if (message.type === 'welcome') {
+        setParticipantId(message.participantId)
+        // Cleared here, not left latched: the server restarting means every
+        // phone in the room greets a table that no longer exists and is told
+        // so. Whoever then scans the fresh code on the screen must land back
+        // at the table, not stay parked on the failure that preceded it.
+        setError(null)
+      }
       if (message.type === 'tableState') setTable(message.table)
       if (message.type === 'error') setError(message.code)
     })
@@ -46,7 +53,7 @@ export function App() {
   const screen = determineScreen(table, participantId, error)
 
   if (screen.kind === 'error') {
-    return <p className="p-6 text-lg text-clay">{screen.code}</p>
+    return <p className="p-6 text-lg text-clay">{errorText(screen.code)}</p>
   }
 
   if (screen.kind === 'connecting') {

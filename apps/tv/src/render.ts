@@ -1,8 +1,34 @@
+import { avatarGlyph } from '@m8/avatars'
 import type { ErrorCode, ParticipantSnapshot } from '@m8/protocol'
 
 export interface TvView {
   readonly code: string
   readonly participants: readonly ParticipantSnapshot[]
+}
+
+/**
+ * The QR image already on screen, per root, with the code it was built for.
+ *
+ * A `tableState` arrives every time anyone joins, renames or drops, and a
+ * fresh `<img>` each time means the browser refetches `/qr/CODE.svg` and the
+ * element blinks — the one element in the room people are pointing a camera
+ * at. The same element is reused while the code is unchanged, so re-rendering
+ * the list around it moves it rather than reloading it. A WeakMap keyed by the
+ * root rather than a module-level variable, so two roots cannot share one
+ * image and nothing is retained after a root is discarded.
+ */
+const qrImages = new WeakMap<HTMLElement, { code: string; image: HTMLImageElement }>()
+
+function qrImage(root: HTMLElement, code: string): HTMLImageElement {
+  const cached = qrImages.get(root)
+  if (cached && cached.code === code) return cached.image
+
+  const image = document.createElement('img')
+  image.setAttribute('src', `/qr/${code}.svg`)
+  image.setAttribute('alt', '')
+  image.className = 'h-96 w-96 bg-chalk p-6'
+  qrImages.set(root, { code, image })
+  return image
 }
 
 function element(tag: string, className: string, text?: string): HTMLElement {
@@ -28,20 +54,23 @@ export function renderTable(root: HTMLElement, view: TvView): void {
   header.appendChild(element('p', 'text-9xl font-black tracking-widest text-brass', view.code))
   root.appendChild(header)
 
-  const qr = document.createElement('img')
-  qr.setAttribute('src', `/qr/${view.code}.svg`)
-  qr.setAttribute('alt', '')
-  qr.className = 'h-96 w-96 bg-chalk p-6'
-  root.appendChild(qr)
+  root.appendChild(qrImage(root, view.code))
 
   const list = element('ul', 'mt-16')
   for (const person of view.participants) {
     const item = element('li', 'mb-6 text-5xl')
     item.setAttribute('data-baton', String(person.hasBaton))
     item.setAttribute('data-connected', String(person.connected))
+
+    // The avatar carries the identity at three metres, where a nickname is
+    // near the limit of what can be read: it comes first, and larger.
+    // Margin, never flexbox `gap`, which needs Chromium 84.
+    const glyph = avatarGlyph(person.avatarId)
+    if (glyph !== null) item.appendChild(element('span', 'mr-6 text-6xl', glyph))
+
     // A participant who has not chosen a nickname yet renders a placeholder
     // rather than an empty row, so the seat is still visible on the screen.
-    item.textContent = person.nickname === '' ? '…' : person.nickname
+    item.appendChild(element('span', '', person.nickname === '' ? '…' : person.nickname))
     list.appendChild(item)
   }
   root.appendChild(list)

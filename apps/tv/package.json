@@ -8,6 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@m8/avatars": "*",
     "@m8/protocol": "*",
     "@m8/tokens": "*",
     "socket.io-client": "^4.8.3"

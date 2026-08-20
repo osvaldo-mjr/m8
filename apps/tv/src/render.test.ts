@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { AVATARS } from '@m8/avatars'
 import type { ParticipantSnapshot } from '@m8/protocol'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { renderError, renderTable, renderWaiting } from './render.js'
@@ -68,9 +69,98 @@ describe('renderTable', () => {
   })
 
   it('shows a placeholder for a participant with no nickname yet', () => {
-    renderTable(root, { code: 'KXTP', participants: [participant({ nickname: '' })] })
+    // Nickname and avatar are chosen in the same submit, so a participant
+    // without one has neither.
+    renderTable(root, {
+      code: 'KXTP',
+      participants: [participant({ nickname: '', avatarId: 'unset' })],
+    })
     const item = root.querySelector('li')
     expect(item?.textContent).toBe('…')
+  })
+
+  it('draws the avatar glyph beside the nickname', () => {
+    const fox = AVATARS.find((avatar) => avatar.id === 'fox')!
+    renderTable(root, {
+      code: 'KXTP',
+      participants: [participant({ nickname: 'Bia', avatarId: 'fox' })],
+    })
+
+    const item = root.querySelector('li')
+    expect(item?.textContent).toContain(fox.glyph)
+    expect(item?.textContent).toContain('Bia')
+  })
+
+  it('draws every avatar in the shared catalogue', () => {
+    renderTable(root, {
+      code: 'KXTP',
+      participants: AVATARS.map((avatar, index) =>
+        participant({ id: `p-${index}`, nickname: `P${index}`, avatarId: avatar.id }),
+      ),
+    })
+
+    for (const avatar of AVATARS) {
+      expect(root.textContent).toContain(avatar.glyph)
+    }
+  })
+
+  it('draws no glyph for a participant who has not chosen an avatar', () => {
+    renderTable(root, {
+      code: 'KXTP',
+      participants: [participant({ nickname: 'Bia', avatarId: 'unset' })],
+    })
+
+    expect(root.querySelector('li')?.textContent).toBe('Bia')
+  })
+
+  it('draws no glyph for an avatarId that names no avatar', () => {
+    renderTable(root, {
+      code: 'KXTP',
+      participants: [participant({ nickname: 'Bia', avatarId: 'dragon' })],
+    })
+
+    expect(root.querySelector('li')?.textContent).toBe('Bia')
+  })
+
+  it('keeps the same QR element across renders of the same table', () => {
+    renderTable(root, { code: 'KXTP', participants: [] })
+    const first = root.querySelector('img')
+
+    // Someone joins: a new tableState, the same code. A fresh <img> here
+    // would make the browser refetch the image and blink the one element
+    // people are pointing a camera at.
+    renderTable(root, { code: 'KXTP', participants: [participant()] })
+
+    expect(root.querySelector('img')).toBe(first)
+  })
+
+  it('builds a new QR element when the code changes', () => {
+    renderTable(root, { code: 'KXTP', participants: [] })
+    const first = root.querySelector('img')
+
+    renderTable(root, { code: 'MNBV', participants: [] })
+
+    const second = root.querySelector('img')
+    expect(second).not.toBe(first)
+    expect(second?.getAttribute('src')).toBe('/qr/MNBV.svg')
+  })
+
+  it('gives each root its own QR element', () => {
+    const other = document.createElement('div')
+    renderTable(root, { code: 'KXTP', participants: [] })
+    renderTable(other, { code: 'KXTP', participants: [] })
+
+    expect(other.querySelector('img')).not.toBe(root.querySelector('img'))
+  })
+
+  it('renders an avatarId as text, never as markup', () => {
+    renderTable(root, {
+      code: 'KXTP',
+      participants: [participant({ nickname: 'Bia', avatarId: '<img src=x>' })],
+    })
+
+    // The QR code stays the only <img> the large screen ever renders.
+    expect(root.querySelectorAll('img')).toHaveLength(1)
   })
 })
 

@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   resolve: {
     alias: {
+      '@m8/avatars': fileURLToPath(new URL('../../packages/avatars/src/index.ts', import.meta.url)),
       '@m8/protocol': fileURLToPath(new URL('../../packages/protocol/src/index.ts', import.meta.url)),
     },
   },

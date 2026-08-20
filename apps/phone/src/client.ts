@@ -2,17 +2,35 @@ import { PROTOCOL_VERSION, type ClientToServer, type ServerToClient } from '@m8/
 import { io } from 'socket.io-client'
 
 const CHANNEL = 'm8'
-const TOKEN_KEY = 'm8.participant.token'
-const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789'
-const CODE_LENGTH = 4
+const TOKEN_KEY_PREFIX = 'm8.participant.token.'
 
-/** The QR carries the whole destination, so the code arrives in the path. */
+/**
+ * Where this device's token for one table is kept.
+ *
+ * Keyed by table code, not global: a phone that joins table A, then scans
+ * table B, then comes back to A must come back as the same participant. Under
+ * a single key, B's token overwrites A's, the return to A is greeted as a
+ * stranger, and A's original row stays behind for good with nobody able to
+ * reclaim it — which quietly breaks the one promise reconnection makes.
+ */
+export function tokenStorageKey(code: string): string {
+  return `${TOKEN_KEY_PREFIX}${code}`
+}
+
+/**
+ * The QR carries the whole destination, so the code arrives in the path.
+ *
+ * Deliberately no alphabet check here. Whether a code names a table is the
+ * server's answer to give — it is authoritative, it already answers
+ * `invalid-code`, and a second copy of the alphabet on this side would reject
+ * codes the server considers perfectly valid the moment the two drift apart,
+ * with nothing failing to say so. This only answers whether the path carries
+ * something to ask about at all.
+ */
 export function codeFromLocation(pathname: string): string | null {
   const candidate = pathname.replace(/^\/+|\/+$/g, '').toUpperCase()
-  if (candidate.length !== CODE_LENGTH) return null
-  for (const char of candidate) {
-    if (!CODE_ALPHABET.includes(char)) return null
-  }
+  if (candidate === '') return null
+  if (candidate.includes('/')) return null
   return candidate
 }
 
@@ -59,7 +77,7 @@ export function connectPhone(
 
   socket.on('connect', () => {
     if (closed) return
-    const storedToken = window.localStorage.getItem(TOKEN_KEY)
+    const storedToken = window.localStorage.getItem(tokenStorageKey(code))
     socket.emit(CHANNEL, determineHelloMessage(code, storedToken))
   })
 
@@ -67,7 +85,7 @@ export function connectPhone(
     if (closed) return
 
     const token = determineTokenToStore(message)
-    if (token !== null) window.localStorage.setItem(TOKEN_KEY, token)
+    if (token !== null) window.localStorage.setItem(tokenStorageKey(code), token)
 
     if (message.type === 'reload') {
       window.location.reload()
