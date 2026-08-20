@@ -111,13 +111,38 @@ Confirmed by the operator:
 target was calibrated for Chromium 68-79 from documentation rather than
 experiment; it now has one confirming experiment behind it.
 
-Not yet exercised in this run, and still open:
+Exercised in a follow-up run the same day, after the findings below were
+fixed:
 
-- Step 5, the overscan check — that nothing is cropped at the edges.
-- Step 8, reloading the television and rejoining the same table.
-- Step 9, toggling phone Wi-Fi to see disconnect and reconnect on screen.
-- Which transport the television negotiated. Not capturable on that run: the
-  server did not log it, despite this document telling the operator to look.
-  It does now — filter the log for `socket transport negotiated`.
+- Step 5, overscan — the code and the QR sit well inside the frame on this
+  set, with margin to spare. Photographed.
+- Step 8, reloading the television — it came back to the same table, same
+  code, with the seated phone still listed. The stored code survives a
+  reload, which is the behaviour the design promises.
+- Step 9, dropping a phone off the network — after the fixes, the screen dims
+  the participant and labels them within about ten seconds, and restores them
+  when the network returns.
+- Transport: **WebSocket, negotiated directly, no upgrade and no fallback**,
+  on every connection this set made. The long-polling fallback that motivated
+  choosing Socket.IO over a raw WebSocket was not needed here. It remains
+  insurance for the rest of the catalogue rather than something this set
+  depends on.
 
-The set's model and firmware year are still to be filled in.
+**Two defects were found by this run that no automated test had caught**, both
+worth recording because they justify the existence of this checklist:
+
+1. The screen encoded connection state in a  attribute and
+   styled nothing, so a participant who had left rendered identically to one
+   who was present. The test guarding it asserted the attribute existed —
+   true, and invisible to anyone in the room.
+2. The heartbeat still used the library defaults, so a device that vanished
+   without closing its socket took up to forty-five seconds to register.
+
+Still open:
+
+- The set model and firmware year.
+- The screen still gives no visual sign of who holds the baton — the same
+  defect as the first one above, in the same function, on an attribute
+  nobody can see. Left deliberately: no baton-only action exists yet, and
+  how it should look belongs to the visual identity pass.
+
