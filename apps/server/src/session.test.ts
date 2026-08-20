@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION, type ServerToClient } from '@m8/protocol'
-import { FixedClock, TableRegistry, createRng, sequentialIds } from '@m8/core'
+import { FixedClock, MAX_PARTICIPANTS, TableRegistry, createRng, sequentialIds } from '@m8/core'
 import { FakeTransport } from '@m8/transport'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { Session } from './session.js'
@@ -187,5 +187,70 @@ describe('the TV-only invariant', () => {
     transport.receive('tv', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
 
     expect(transport.sentTo('tv')).toContainEqual({ type: 'error', code: 'not-allowed' })
+  })
+})
+
+describe('a full table', () => {
+  it('answers table-full to the phone that arrives after the last place is taken', () => {
+    transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    const code = firstOfType('tv', 'tableReady').code
+
+    for (let i = 0; i < MAX_PARTICIPANTS; i += 1) {
+      transport.connect(`phone-${i}`)
+      transport.receive(`phone-${i}`, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    }
+
+    transport.connect('phone-late')
+    transport.receive('phone-late', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+
+    expect(transport.sentTo('phone-late')).toEqual([{ type: 'error', code: 'table-full' }])
+    expect(registry.getTable(code)?.participants).toHaveLength(MAX_PARTICIPANTS)
+  })
+})
+
+describe('one connection speaks for one participant', () => {
+  function openTable(): string {
+    transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    return firstOfType('tv', 'tableReady').code
+  }
+
+  it('refuses a second hello on a connection already speaking for a participant', () => {
+    const code = openTable()
+    transport.connect('phone')
+    transport.receive('phone', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    transport.receive('phone', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+
+    expect(transport.sentTo('phone')).toContainEqual({ type: 'error', code: 'not-allowed' })
+    expect(registry.getTable(code)?.participants).toHaveLength(1)
+  })
+
+  it('mints no participant a repeated hello could orphan', () => {
+    const code = openTable()
+    transport.connect('phone')
+    for (let i = 0; i < 5; i += 1) {
+      transport.receive('phone', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    }
+
+    const table = registry.getTable(code)
+    expect(table?.participants).toHaveLength(1)
+    // Only one welcome was ever issued, so the device holds exactly one token.
+    expect(transport.sentTo('phone').filter((m) => m.type === 'welcome')).toHaveLength(1)
+  })
+
+  it('leaves nobody connected and nobody holding the baton after that connection drops', () => {
+    const code = openTable()
+    transport.connect('phone')
+    for (let i = 0; i < 5; i += 1) {
+      transport.receive('phone', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    }
+    transport.disconnect('phone')
+
+    const table = registry.getTable(code)
+    expect(table?.participants.filter((p) => p.connected)).toHaveLength(0)
+    // The baton is held by the one participant that exists, not by a ghost
+    // no connection will ever speak for again.
+    expect(table?.batonHolderId).toBe(table?.participants[0]?.id)
   })
 })

@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import type { AddressInfo } from 'node:net'
+import { connect, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FastifyInstance } from 'fastify'
@@ -90,6 +90,43 @@ describe('buildApp routing', () => {
       margin: 1,
     })
     expect(res.body).toBe(expectedSvg)
+  })
+
+  it('lets the QR image be cached, since the image for a code never changes', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/qr/KXTP.svg',
+      headers: { host: 'example.local:4321' },
+    })
+
+    // Without this the television refetches the QR on every tableState —
+    // every join, every rename — and the element people are pointing a
+    // camera at blinks.
+    expect(res.headers['cache-control']).toContain('immutable')
+    expect(res.headers['cache-control']).toMatch(/max-age=\d{5,}/)
+  })
+
+  it('refuses a QR request carrying no Host header rather than encoding one', async () => {
+    // HTTP/1.0 permits a request with no Host at all, and `undefined`
+    // interpolated into the target would produce a QR encoding
+    // `http://undefined/KXTP` — a code that scans and resolves to nothing.
+    await app.listen({ port: 0, host: '127.0.0.1' })
+    const address = app.server.address() as AddressInfo
+
+    const response = await new Promise<string>((resolve, reject) => {
+      const socket = connect(address.port, '127.0.0.1', () => {
+        socket.write('GET /qr/KXTP.svg HTTP/1.0\r\n\r\n')
+      })
+      let received = ''
+      socket.on('data', (chunk) => {
+        received += chunk.toString()
+      })
+      socket.on('end', () => resolve(received))
+      socket.on('error', reject)
+    })
+
+    expect(response).toMatch(/^HTTP\/1\.[01] 400/)
+    expect(response).not.toContain('svg')
   })
 })
 

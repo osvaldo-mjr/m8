@@ -81,9 +81,16 @@ export class Session {
       }
 
       case 'hello': {
-        // A screen never joins as a participant.
+        // One connection carries one identity for its whole life: a screen
+        // never joins as a participant, and a connection already speaking for
+        // a participant never mints a second one. Answering `not-allowed` is
+        // chosen over releasing the previous participant because releasing
+        // would make `hello` destructive of a seat nobody asked to give up,
+        // while rejecting costs a legitimate client nothing: the phone greets
+        // once per connection, and Socket.IO hands a reconnection a fresh
+        // connection with a fresh id.
         const existing = this.#attachments.get(connection.id)
-        if (existing && existing.role === 'screen') {
+        if (existing) {
           connection.send({ type: 'error', code: 'not-allowed' })
           return
         }

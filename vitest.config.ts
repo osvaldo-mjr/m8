@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@m8/protocol/validate': fileURLToPath(new URL('./packages/protocol/src/validate.ts', import.meta.url)),
+      '@m8/avatars': fileURLToPath(new URL('./packages/avatars/src/index.ts', import.meta.url)),
       '@m8/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
       '@m8/protocol': fileURLToPath(new URL('./packages/protocol/src/index.ts', import.meta.url)),
       '@m8/transport': fileURLToPath(new URL('./packages/transport/src/index.ts', import.meta.url)),

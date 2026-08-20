@@ -1,3 +1,4 @@
+import { isAvatarId } from '@m8/avatars'
 import type { Clock } from './clock.js'
 import type { DomainEvent } from './events.js'
 import type { IdSource } from './ids.js'
@@ -7,6 +8,30 @@ import type { Participant, Table, TablePhase } from './table.js'
 import type { DomainError, ParticipantView, TableView } from './views.js'
 
 export const NICKNAME_MAX_LENGTH = 16
+
+/**
+ * How many people one table holds. Not a game rule — seats come from a game
+ * manifest and are a separate count — but a bound on the process: without one,
+ * a single table accepts participants until the machine runs out of memory,
+ * and the large screen has to render a list nobody can read at three metres.
+ * Eight is comfortably above any game in the catalogue.
+ */
+export const MAX_PARTICIPANTS = 8
+
+/**
+ * How many times a colliding code is redrawn before giving up. The code space
+ * is finite and nothing evicts a table yet, so "keep trying" is a way to hang
+ * the event loop with no diagnosis; this turns that into an error with a name.
+ */
+const MAX_CODE_ATTEMPTS = 100
+
+/** No free table code was found. The code space is full, or nearly. */
+export class TableCodeExhaustedError extends Error {
+  constructor(attempts: number) {
+    super(`No free table code after ${attempts} attempts`)
+    this.name = 'TableCodeExhaustedError'
+  }
+}
 
 const DEFAULT_NICKNAME = ''
 const DEFAULT_AVATAR = 'unset'
@@ -74,12 +99,16 @@ export class TableRegistry {
   }
 
   createTable(): Table {
-    let code: string
-    do {
+    let code: string | undefined
+    for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
       const [candidate, nextRng] = generateTableCode(this.#rng, this.#shard)
       this.#rng = nextRng
-      code = candidate
-    } while (this.#tables.has(code))
+      if (!this.#tables.has(candidate)) {
+        code = candidate
+        break
+      }
+    }
+    if (code === undefined) throw new TableCodeExhaustedError(MAX_CODE_ATTEMPTS)
 
     const table: MutableTable = {
       code,
@@ -127,6 +156,10 @@ export class TableRegistry {
         events: [{ type: 'participant-rejoined', code: table.code, participantId: returning.id }],
       }
     }
+
+    // Checked only on this path: a returning token takes no new place,
+    // because the participant it names already occupies one.
+    if (table.participants.length >= MAX_PARTICIPANTS) return { error: 'table-full' }
 
     const participant: MutableParticipant = {
       id: this.#newParticipantId(),
@@ -201,6 +234,12 @@ export class TableRegistry {
     // deliberate choice. Treated as no change at all, not a change to an
     // empty nickname, so a stray submit cannot discard an avatar pick either.
     if (trimmed === '') return []
+
+    // An id naming no avatar carries no intent either, and the server is the
+    // only thing standing between a hand-written message and a value every
+    // screen in the room then renders. Same rule as the blank nickname: not a
+    // change to something else, no change at all.
+    if (!isAvatarId(avatarId)) return []
 
     participant.nickname = trimmed.slice(0, NICKNAME_MAX_LENGTH)
     participant.avatarId = avatarId

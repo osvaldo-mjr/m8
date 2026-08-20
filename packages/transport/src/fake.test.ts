@@ -140,3 +140,50 @@ describe('FakeTransport', () => {
     expect(() => transport.receive('ghost', { type: 'leave' })).toThrow(/ghost/)
   })
 })
+
+describe('FakeTransport handler registration', () => {
+  // The Transport contract is single-slot: registering again replaces the
+  // previous handler rather than adding a second one. Pinned here because a
+  // substitute implementation built on an EventEmitter would add instead,
+  // and every message would then be handled twice.
+  it('replaces the connect handler rather than adding a second one', () => {
+    const transport = new FakeTransport()
+    const first = vi.fn()
+    const second = vi.fn()
+    transport.onConnect(first)
+    transport.onConnect(second)
+
+    transport.connect('phone-1')
+
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+
+  it('replaces the message handler rather than adding a second one', () => {
+    const transport = new FakeTransport()
+    const first = vi.fn()
+    const second = vi.fn()
+    transport.onMessage(first)
+    transport.onMessage(second)
+    transport.connect('phone-1')
+
+    transport.receive('phone-1', { type: 'leave' })
+
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+
+  it('replaces the disconnect handler rather than adding a second one', () => {
+    const transport = new FakeTransport()
+    const first = vi.fn()
+    const second = vi.fn()
+    transport.onDisconnect(first)
+    transport.onDisconnect(second)
+    transport.connect('phone-1')
+
+    transport.disconnect('phone-1')
+
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+})

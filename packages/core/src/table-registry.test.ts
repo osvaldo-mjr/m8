@@ -1,8 +1,9 @@
+import { AVATARS } from '@m8/avatars'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { FixedClock } from './clock.js'
 import { sequentialIds } from './ids.js'
 import { createRng } from './rng.js'
-import { TableRegistry } from './table-registry.js'
+import { MAX_PARTICIPANTS, TableCodeExhaustedError, TableRegistry } from './table-registry.js'
 
 function makeRegistry(): TableRegistry {
   return new TableRegistry({
@@ -306,6 +307,60 @@ describe('TableRegistry.setProfile', () => {
   })
 })
 
+describe('TableRegistry.setProfile avatar validation', () => {
+  it('rejects an avatarId that names no avatar, as no profile change at all', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    const joined = registry.joinParticipant(code, undefined)
+    if ('error' in joined) throw new Error(joined.error)
+
+    const events = registry.setProfile(code, joined.participant.id, 'Ana', 'dragon')
+
+    // Same rule as a blank nickname: not a change to something else, no
+    // change at all - so a malformed submit cannot half-apply.
+    expect(events).toEqual([])
+    expect(registry.getTable(code)?.participants[0]?.nickname).toBe('')
+    expect(registry.getTable(code)?.participants[0]?.avatarId).toBe('unset')
+  })
+
+  it('rejects an over-long avatarId rather than broadcasting it verbatim', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    const joined = registry.joinParticipant(code, undefined)
+    if ('error' in joined) throw new Error(joined.error)
+
+    const events = registry.setProfile(code, joined.participant.id, 'Ana', 'x'.repeat(120))
+
+    expect(events).toEqual([])
+    expect(registry.getTable(code)?.participants[0]?.avatarId).toBe('unset')
+  })
+
+  it('accepts every id in the shared catalogue', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    const joined = registry.joinParticipant(code, undefined)
+    if ('error' in joined) throw new Error(joined.error)
+
+    for (const avatar of AVATARS) {
+      registry.setProfile(code, joined.participant.id, 'Ana', avatar.id)
+      expect(registry.getTable(code)?.participants[0]?.avatarId).toBe(avatar.id)
+    }
+  })
+
+  it('keeps the avatar already chosen when a later submit names no avatar', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    const joined = registry.joinParticipant(code, undefined)
+    if ('error' in joined) throw new Error(joined.error)
+    registry.setProfile(code, joined.participant.id, 'Ana', 'fox')
+
+    registry.setProfile(code, joined.participant.id, 'Bia', 'dragon')
+
+    expect(registry.getTable(code)?.participants[0]?.nickname).toBe('Ana')
+    expect(registry.getTable(code)?.participants[0]?.avatarId).toBe('fox')
+  })
+})
+
 describe('TableRegistry.snapshot', () => {
   it('reports the baton holder', () => {
     const registry = makeRegistry()
@@ -340,8 +395,22 @@ describe('TableRegistry.snapshot', () => {
     ])
   })
 
-  it('preserves arrival order', () => {
-    const registry = makeRegistry()
+  it('preserves arrival order, not id order', () => {
+    // The ids are deliberately out of order with arrival. A monotonic id
+    // source cannot tell arrival order from sort-by-id at all: it never
+    // reuses, so for any surviving subset the two orders coincide and the
+    // test would pass against an implementation that tracked nothing.
+    // Sorting these by id gives p-2, p-5, p-7 — a different sequence from
+    // the arrival order asserted below.
+    const outOfOrderIds = ['p-9', 'p-5', 'p-7', 'p-2']
+    let issued = 0
+    const registry = new TableRegistry({
+      clock: new FixedClock(1_000),
+      rng: createRng(2026),
+      newParticipantId: () => outOfOrderIds[issued++] as string,
+      newToken: sequentialIds('t'),
+      shard: 'A',
+    })
     const table = registry.createTable()
     const first = registry.joinParticipant(table.code, undefined)
     const second = registry.joinParticipant(table.code, undefined)
@@ -364,6 +433,7 @@ describe('TableRegistry.snapshot', () => {
       third.participant.id,
       fourth.participant.id,
     ])
+    expect(snapshot.participants.map((p) => p.id)).toEqual(['p-5', 'p-7', 'p-2'])
   })
 })
 
@@ -409,5 +479,72 @@ describe('TableRegistry rejoin preserves the baton', () => {
     expect(again.participant.id).toBe(host.participant.id)
     expect(again.participant.connected).toBe(true)
     expect(registry.getTable(code)?.batonHolderId).toBe(host.participant.id)
+  })
+})
+
+describe('TableRegistry capacity', () => {
+  it('fills up to MAX_PARTICIPANTS', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+
+    for (let i = 0; i < MAX_PARTICIPANTS; i += 1) {
+      const result = registry.joinParticipant(code, undefined)
+      if ('error' in result) throw new Error(`join ${i} failed: ${result.error}`)
+    }
+
+    expect(registry.getTable(code)?.participants).toHaveLength(MAX_PARTICIPANTS)
+  })
+
+  it('refuses the participant after that with table-full', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    for (let i = 0; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
+
+    const overflow = registry.joinParticipant(code, undefined)
+
+    expect(overflow).toEqual({ error: 'table-full' })
+    expect(registry.getTable(code)?.participants).toHaveLength(MAX_PARTICIPANTS)
+  })
+
+  it('still lets someone already at a full table rejoin with their token', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    const host = registry.joinParticipant(code, undefined)
+    if ('error' in host) throw new Error(host.error)
+    for (let i = 1; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
+    registry.disconnectParticipant(code, host.participant.id)
+
+    // A rejoin takes no new place: the participant already holds one.
+    const again = registry.joinParticipant(code, host.participant.token)
+    if ('error' in again) throw new Error(again.error)
+
+    expect(again.participant.id).toBe(host.participant.id)
+    expect(registry.getTable(code)?.participants).toHaveLength(MAX_PARTICIPANTS)
+  })
+
+  it('frees the place again when someone leaves', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    const host = registry.joinParticipant(code, undefined)
+    if ('error' in host) throw new Error(host.error)
+    for (let i = 1; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
+
+    registry.removeParticipant(code, host.participant.id)
+    const newcomer = registry.joinParticipant(code, undefined)
+
+    expect('error' in newcomer).toBe(false)
+  })
+})
+
+describe('TableRegistry code exhaustion', () => {
+  it('throws a named error rather than looping forever once codes run out', () => {
+    const registry = makeRegistry()
+
+    expect(() => {
+      // No table is ever evicted today, so a long-lived process can in
+      // principle reach this. Unbounded retrying would hang the event loop
+      // with no message at all; a named error is at least diagnosable.
+      for (let i = 0; i < 100_000; i += 1) registry.createTable()
+    }).toThrow(TableCodeExhaustedError)
   })
 })
