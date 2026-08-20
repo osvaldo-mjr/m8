@@ -22,7 +22,7 @@
     "guards": "npm run build && npm run guard:syntax && npm run guard:size",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p apps/tv"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

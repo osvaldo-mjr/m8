@@ -1,0 +1,33 @@
+{
+  // The large screen, and only the large screen, is checked against the
+  // libraries a 2020 television actually has.
+  //
+  // Both existing guards read the built bundle: one parses it with an ES2017
+  // grammar, the other measures it. Neither can see a *runtime* API, because
+  // `Object.fromEntries`, `Array.prototype.flat`, `String.matchAll` and
+  // `globalThis` are identifiers, not syntax — they survive the bundler
+  // untouched, parse cleanly as ES2017, and then throw on Chromium 68 in
+  // somebody's living room. The root configuration offers every workspace
+  // `lib: ES2022`, so all four would have typechecked.
+  //
+  // `lib` is what closes that. The root program excludes `apps/tv/src` and
+  // `npm run typecheck` runs this project as well, so the screen's own
+  // sources are checked exactly once, here.
+  //
+  // What this does not cover: `lib.dom.d.ts` has no version axis, so a DOM
+  // API newer than the target is still invisible to the compiler. The bundle
+  // that exists today uses nothing of the sort, and DOM additions are for now
+  // a matter of review rather than of tooling.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2017",
+    "lib": ["ES2017", "DOM", "DOM.Iterable"],
+    "types": [],
+    "paths": {
+      "@m8/avatars": ["../../packages/avatars/src/index.ts"],
+      "@m8/protocol": ["../../packages/protocol/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

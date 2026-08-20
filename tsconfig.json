@@ -10,5 +10,12 @@
       "@m8/transport": ["./packages/transport/src/index.ts"]
     }
   },
-  "include": ["packages/**/*.ts", "apps/**/*.ts", "apps/**/*.tsx", "scripts/**/*.ts", "*.ts"]
+  "include": ["packages/**/*.ts", "apps/**/*.ts", "apps/**/*.tsx", "scripts/**/*.ts", "*.ts"],
+  // apps/tv/src has its own project, checked against an ES2017 library
+  // because that is what the target televisions have. Excluded here so it is
+  // checked once, under the narrower libraries, rather than twice with the
+  // looser check silently passing first. `npm run typecheck` runs both.
+  //
+  // The default exclusions are restated because naming this key replaces them.
+  "exclude": ["node_modules", "**/dist", "apps/tv/src"]
 }
