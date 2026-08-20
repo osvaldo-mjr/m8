@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createRng, rngInt, rngShuffle } from './rng.js'
+import { createRng, rngInt, rngShuffle, type Rng } from './rng.js'
 
 describe('rngInt', () => {
   it('returns a value inside the requested range', () => {
@@ -39,6 +39,32 @@ describe('rngInt', () => {
     expect(next.seed).toBe(7)
     expect(next.cursor).toBe(rng.cursor + 1)
   })
+
+  it('draws the same value from a literal Rng as from one reached by advancing in-process', () => {
+    let inProcess = createRng(5)
+    for (let i = 0; i < 3; i += 1) {
+      ;[, inProcess] = rngInt(inProcess, 6)
+    }
+    const persisted: Rng = { seed: 5, cursor: 3 }
+
+    const [fromPersisted] = rngInt(persisted, 6)
+    const [fromInProcess] = rngInt(inProcess, 6)
+
+    expect(fromPersisted).toBe(fromInProcess)
+  })
+
+  it('draws the same value after a JSON round trip as before it', () => {
+    let rng = createRng(11)
+    for (let i = 0; i < 4; i += 1) {
+      ;[, rng] = rngInt(rng, 6)
+    }
+    const roundTripped: Rng = JSON.parse(JSON.stringify(rng))
+
+    expect(roundTripped).toEqual(rng)
+    const [beforeRoundTrip] = rngInt(rng, 6)
+    const [afterRoundTrip] = rngInt(roundTripped, 6)
+    expect(afterRoundTrip).toBe(beforeRoundTrip)
+  })
 })
 
 describe('rngShuffle', () => {
@@ -59,5 +85,33 @@ describe('rngShuffle', () => {
     const [first] = rngShuffle(createRng(9), items)
     const [second] = rngShuffle(createRng(9), items)
     expect(first).toEqual(second)
+  })
+
+  it('shuffles the same way from a literal Rng as from one reached by advancing in-process', () => {
+    const items = ['a', 'b', 'c', 'd', 'e']
+    let inProcess = createRng(5)
+    for (let i = 0; i < 3; i += 1) {
+      ;[, inProcess] = rngInt(inProcess, 6)
+    }
+    const persisted: Rng = { seed: 5, cursor: 3 }
+
+    const [fromPersisted] = rngShuffle(persisted, items)
+    const [fromInProcess] = rngShuffle(inProcess, items)
+
+    expect(fromPersisted).toEqual(fromInProcess)
+  })
+
+  it('shuffles the same way after a JSON round trip as before it', () => {
+    const items = ['a', 'b', 'c', 'd', 'e']
+    let rng = createRng(11)
+    for (let i = 0; i < 4; i += 1) {
+      ;[, rng] = rngInt(rng, 6)
+    }
+    const roundTripped: Rng = JSON.parse(JSON.stringify(rng))
+
+    expect(roundTripped).toEqual(rng)
+    const [beforeRoundTrip] = rngShuffle(rng, items)
+    const [afterRoundTrip] = rngShuffle(roundTripped, items)
+    expect(afterRoundTrip).toEqual(beforeRoundTrip)
   })
 })
