@@ -113,6 +113,18 @@ describe('FakeTransport', () => {
     expect(handler).toHaveBeenCalledTimes(1)
   })
 
+  it('fires the disconnect handler exactly once across disconnect then close', () => {
+    const transport = new FakeTransport()
+    const handler = vi.fn()
+    transport.onDisconnect(handler)
+    const connection = transport.connect('phone-1')
+
+    transport.disconnect('phone-1')
+    connection.close()
+
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
   it('silently drops sends to a closed connection', () => {
     const transport = new FakeTransport()
     const connection = transport.connect('phone-1')
