@@ -1,10 +1,10 @@
-import type { ErrorCode, ParticipantSnapshot, TableSnapshot } from '@m8/protocol'
 import type { Clock } from './clock.js'
 import type { DomainEvent } from './events.js'
 import type { IdSource } from './ids.js'
 import { generateTableCode, normalizeTableCode } from './table-code.js'
 import type { Rng } from './rng.js'
-import type { Participant, Table } from './table.js'
+import type { Participant, Table, TablePhase } from './table.js'
+import type { DomainError, ParticipantView, TableView } from './views.js'
 
 export const NICKNAME_MAX_LENGTH = 16
 
@@ -22,7 +22,32 @@ export interface TableRegistryOptions {
 
 export type JoinResult =
   | { readonly table: Table; readonly participant: Participant; readonly events: DomainEvent[] }
-  | { readonly error: ErrorCode }
+  | { readonly error: DomainError }
+
+/**
+ * The registry's own writable shape. `Table` and `Participant` (exported to
+ * everyone else) are readonly all the way down, so a consumer outside this
+ * class can read a table but cannot mutate it without going through a method
+ * that emits the `DomainEvent` describing the change. A `MutableTable` is
+ * structurally assignable to a `Table` — same object, narrower type at the
+ * boundary — which is why the public methods can just return one.
+ */
+interface MutableParticipant {
+  readonly id: string
+  readonly token: string
+  nickname: string
+  avatarId: string
+  connected: boolean
+  readonly joinedAt: number
+}
+
+interface MutableTable {
+  readonly code: string
+  phase: TablePhase
+  readonly participants: MutableParticipant[]
+  batonHolderId: string | null
+  readonly createdAt: number
+}
 
 /**
  * Holds every live table. Deliberately in memory: a table lives while its
@@ -33,7 +58,7 @@ export type JoinResult =
  * a persistent store later is a new implementation and not a rewrite.
  */
 export class TableRegistry {
-  readonly #tables = new Map<string, Table>()
+  readonly #tables = new Map<string, MutableTable>()
   readonly #clock: Clock
   readonly #newParticipantId: IdSource
   readonly #newToken: IdSource
@@ -56,7 +81,7 @@ export class TableRegistry {
       code = candidate
     } while (this.#tables.has(code))
 
-    const table: Table = {
+    const table: MutableTable = {
       code,
       phase: 'awaiting-host',
       participants: [],
@@ -68,8 +93,7 @@ export class TableRegistry {
   }
 
   getTable(code: string): Table | undefined {
-    const normalized = normalizeTableCode(code)
-    return normalized === null ? undefined : this.#tables.get(normalized)
+    return this.#findMutable(code)
   }
 
   joinParticipant(code: string, token: string | undefined): JoinResult {
@@ -92,7 +116,7 @@ export class TableRegistry {
       }
     }
 
-    const participant: Participant = {
+    const participant: MutableParticipant = {
       id: this.#newParticipantId(),
       token: this.#newToken(),
       nickname: DEFAULT_NICKNAME,
@@ -116,7 +140,7 @@ export class TableRegistry {
   }
 
   disconnectParticipant(code: string, participantId: string): DomainEvent[] {
-    const table = this.getTable(code)
+    const table = this.#findMutable(code)
     const participant = table?.participants.find((p) => p.id === participantId)
     if (!table || !participant) return []
 
@@ -125,7 +149,7 @@ export class TableRegistry {
   }
 
   removeParticipant(code: string, participantId: string): DomainEvent[] {
-    const table = this.getTable(code)
+    const table = this.#findMutable(code)
     if (!table) return []
 
     const index = table.participants.findIndex((p) => p.id === participantId)
@@ -154,7 +178,7 @@ export class TableRegistry {
   }
 
   setProfile(code: string, participantId: string, nickname: string, avatarId: string): DomainEvent[] {
-    const table = this.getTable(code)
+    const table = this.#findMutable(code)
     const participant = table?.participants.find((p) => p.id === participantId)
     if (!table || !participant) return []
 
@@ -164,8 +188,8 @@ export class TableRegistry {
   }
 
   /** The full public view of a table. Tokens never appear here. */
-  snapshot(table: Table): TableSnapshot {
-    const participants: ParticipantSnapshot[] = table.participants.map((p) => ({
+  snapshot(table: Table): TableView {
+    const participants: ParticipantView[] = table.participants.map((p) => ({
       id: p.id,
       nickname: p.nickname,
       avatarId: p.avatarId,
@@ -174,5 +198,10 @@ export class TableRegistry {
     }))
 
     return { code: table.code, phase: table.phase, participants }
+  }
+
+  #findMutable(code: string): MutableTable | undefined {
+    const normalized = normalizeTableCode(code)
+    return normalized === null ? undefined : this.#tables.get(normalized)
   }
 }

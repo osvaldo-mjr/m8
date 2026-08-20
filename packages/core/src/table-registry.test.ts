@@ -260,9 +260,18 @@ describe('TableRegistry.snapshot', () => {
     const table = registry.createTable()
     registry.joinParticipant(table.code, undefined)
 
-    const serialized = JSON.stringify(registry.snapshot(table))
+    const snapshot = registry.snapshot(table)
 
-    expect(serialized).not.toContain('t-1')
+    // Structural, not value-based: proves no private field exists on the
+    // view at all, rather than merely that one particular token value is
+    // absent from the serialized text.
+    expect(Object.keys(snapshot.participants[0]!).sort()).toEqual([
+      'avatarId',
+      'connected',
+      'hasBaton',
+      'id',
+      'nickname',
+    ])
   })
 
   it('preserves arrival order', () => {
@@ -275,13 +284,46 @@ describe('TableRegistry.snapshot', () => {
       throw new Error('join failed')
     }
 
-    const snapshot = registry.snapshot(third.table)
+    // The first participant leaves and a fourth arrives, so the surviving
+    // order can only come from tracking arrival, not from re-deriving it
+    // from a fresh three-item sequence.
+    registry.removeParticipant(table.code, first.participant.id)
+    const fourth = registry.joinParticipant(table.code, undefined)
+    if ('error' in fourth) throw new Error(fourth.error)
+
+    const snapshot = registry.snapshot(fourth.table)
 
     expect(snapshot.participants.map((p) => p.id)).toEqual([
-      first.participant.id,
       second.participant.id,
       third.participant.id,
+      fourth.participant.id,
     ])
+  })
+})
+
+describe('TableRegistry reads the clock per operation', () => {
+  it('stamps createdAt and joinedAt from the injected clock, read fresh each time', () => {
+    const clock = new FixedClock(1_000)
+    const registry = new TableRegistry({
+      clock,
+      rng: createRng(2026),
+      newParticipantId: sequentialIds('p'),
+      newToken: sequentialIds('t'),
+      shard: 'A',
+    })
+
+    const table = registry.createTable()
+    const first = registry.joinParticipant(table.code, undefined)
+    if ('error' in first) throw new Error(first.error)
+
+    expect(table.createdAt).toBe(1_000)
+    expect(first.participant.joinedAt).toBe(1_000)
+
+    clock.advance(5_000)
+    const second = registry.joinParticipant(table.code, undefined)
+    if ('error' in second) throw new Error(second.error)
+
+    expect(second.participant.joinedAt).toBe(6_000)
   })
 })
 
