@@ -21,5 +21,20 @@ export interface TableView {
   readonly participants: readonly ParticipantView[]
 }
 
-/** Core's own error vocabulary. `invalid-message` is a wire-framing concern and has no domain meaning, so it does not appear here. */
-export type DomainError = 'unknown-table' | 'invalid-code' | 'table-full' | 'not-allowed'
+/**
+ * Core's own error vocabulary. `invalid-message` is a wire-framing concern
+ * and has no domain meaning, so it does not appear here.
+ *
+ * `table-unavailable` is the refusal to mint a new table: the code space is
+ * finite and nothing evicts a table yet, so a long-lived process can in
+ * principle run out. It is a value rather than a thrown error because the
+ * only caller is a socket event listener with nothing catching above it —
+ * throwing there ends the process and every other table in it, while a
+ * refusal reaches the one screen that asked.
+ */
+export type DomainError =
+  | 'unknown-table'
+  | 'invalid-code'
+  | 'table-full'
+  | 'not-allowed'
+  | 'table-unavailable'

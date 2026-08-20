@@ -11,6 +11,8 @@ export type ErrorCode =
   | 'invalid-code'
   | 'invalid-message'
   | 'not-allowed'
+  /** No table could be opened at all: the server's code space is full. */
+  | 'table-unavailable'
 
 export interface ParticipantSnapshot {
   readonly id: string

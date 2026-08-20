@@ -73,7 +73,16 @@ export class Session {
           connection.send({ type: 'reload', reason: 'protocol-version' })
           return
         }
-        const table = this.#registry.openTable(message.code)
+        const opened = this.#registry.openTable(message.code)
+        if ('error' in opened) {
+          // The code space is full. Nothing is attached and no code is
+          // announced, so the screen is never left showing a table nobody
+          // can join; it displays the error instead, which is the only
+          // diagnostic surface a television has.
+          connection.send({ type: 'error', code: translateError(opened.error) })
+          return
+        }
+        const table = opened.table
         this.#attachments.set(connection.id, { role: 'screen', code: table.code })
         connection.send({ type: 'tableReady', code: table.code })
         this.#broadcast(table)

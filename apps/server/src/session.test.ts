@@ -1,5 +1,12 @@
 import { PROTOCOL_VERSION, type ServerToClient } from '@m8/protocol'
-import { FixedClock, MAX_PARTICIPANTS, TableRegistry, createRng, sequentialIds } from '@m8/core'
+import {
+  FixedClock,
+  MAX_PARTICIPANTS,
+  TableRegistry,
+  createRng,
+  sequentialIds,
+  type OpenTableResult,
+} from '@m8/core'
 import { FakeTransport } from '@m8/transport'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { Session } from './session.js'
@@ -68,6 +75,59 @@ describe('a screen connecting', () => {
     transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION + 1 })
 
     expect(transport.sentTo('tv')).toContainEqual({ type: 'reload', reason: 'protocol-version' })
+  })
+
+  /**
+   * A registry whose code space is full. Reaching that state for real needs
+   * tens of thousands of live tables in one process, and the registry's own
+   * tests already drive it there; what is under test here is only what the
+   * session does with the refusal. Subclassed rather than faked so it is the
+   * real class, with the real signature, that answers.
+   */
+  class FullRegistry extends TableRegistry {
+    override openTable(): OpenTableResult {
+      return { error: 'table-unavailable' }
+    }
+  }
+
+  function sessionOnAFullRegistry(): void {
+    transport = new FakeTransport()
+    new Session(
+      transport,
+      new FullRegistry({
+        clock: new FixedClock(1_000),
+        rng: createRng(2026),
+        newParticipantId: sequentialIds('p'),
+        newToken: sequentialIds('t'),
+        shard: 'A',
+      }),
+    )
+  }
+
+  /**
+   * This path used to throw out of a socket event listener that nothing
+   * catches, which would have taken the server down and every other table in
+   * it. The screen is told instead, and it already knows how to display an
+   * error code — the only diagnostic surface a television has.
+   */
+  it('tells the screen the table is unavailable when no code can be opened', () => {
+    sessionOnAFullRegistry()
+    transport.connect('tv')
+
+    expect(() => {
+      transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    }).not.toThrow()
+    expect(transport.sentTo('tv')).toContainEqual({ type: 'error', code: 'table-unavailable' })
+  })
+
+  it('promises the screen no table it cannot then hand over', () => {
+    sessionOnAFullRegistry()
+    transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+
+    // No tableReady and no state for a table that was never created: the
+    // screen must not be left showing a code nobody can join.
+    expect(transport.sentTo('tv').map((m) => m.type)).toEqual(['error'])
   })
 })
 

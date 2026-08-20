@@ -5,13 +5,8 @@ export { FixedClock } from './clock.js'
 export type { Clock } from './clock.js'
 export { sequentialIds } from './ids.js'
 export type { IdSource } from './ids.js'
-export {
-  MAX_PARTICIPANTS,
-  NICKNAME_MAX_LENGTH,
-  TableCodeExhaustedError,
-  TableRegistry,
-} from './table-registry.js'
-export type { JoinResult, TableRegistryOptions } from './table-registry.js'
+export { MAX_PARTICIPANTS, NICKNAME_MAX_LENGTH, TableRegistry } from './table-registry.js'
+export type { JoinResult, OpenTableResult, TableRegistryOptions } from './table-registry.js'
 export type { DomainEvent } from './events.js'
 export type { Participant, Table, TablePhase } from './table.js'
 export type { DomainError, ParticipantView, TableView } from './views.js'

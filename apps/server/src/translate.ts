@@ -38,6 +38,7 @@ const DOMAIN_ERROR_TO_ERROR_CODE: Record<DomainError, ErrorCode> = {
   'invalid-code': 'invalid-code',
   'table-full': 'table-full',
   'not-allowed': 'not-allowed',
+  'table-unavailable': 'table-unavailable',
 }
 
 export function translateError(error: DomainError): ErrorCode {

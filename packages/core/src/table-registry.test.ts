@@ -3,7 +3,20 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { FixedClock } from './clock.js'
 import { sequentialIds } from './ids.js'
 import { createRng } from './rng.js'
-import { MAX_PARTICIPANTS, TableCodeExhaustedError, TableRegistry } from './table-registry.js'
+import { MAX_PARTICIPANTS, TableRegistry } from './table-registry.js'
+import type { Table } from './table.js'
+import type { DomainError } from './views.js'
+
+/**
+ * A fresh table, with the result unwrapped. `openTable` is the only way to
+ * obtain one — it can refuse, and refusing rather than throwing is the whole
+ * point — so the tests that merely need a table say so through this.
+ */
+function newTable(registry: TableRegistry): Table {
+  const result = registry.openTable()
+  if ('error' in result) throw new Error(`Expected a table, got ${result.error}`)
+  return result.table
+}
 
 function makeRegistry(): TableRegistry {
   return new TableRegistry({
@@ -15,7 +28,7 @@ function makeRegistry(): TableRegistry {
   })
 }
 
-describe('TableRegistry.createTable', () => {
+describe('TableRegistry.openTable, opening a fresh table', () => {
   let registry: TableRegistry
 
   beforeEach(() => {
@@ -23,25 +36,25 @@ describe('TableRegistry.createTable', () => {
   })
 
   it('creates a table awaiting a host', () => {
-    const table = registry.createTable()
+    const table = newTable(registry)
     expect(table.phase).toBe('awaiting-host')
     expect(table.participants).toEqual([])
     expect(table.batonHolderId).toBeNull()
   })
 
   it('creates tables with distinct codes', () => {
-    const first = registry.createTable()
-    const second = registry.createTable()
+    const first = newTable(registry)
+    const second = newTable(registry)
     expect(first.code).not.toBe(second.code)
   })
 
   it('finds a table by its code', () => {
-    const table = registry.createTable()
+    const table = newTable(registry)
     expect(registry.getTable(table.code)).toBe(table)
   })
 
   it('finds a table by a lowercase code', () => {
-    const table = registry.createTable()
+    const table = newTable(registry)
     expect(registry.getTable(table.code.toLowerCase())).toBe(table)
   })
 
@@ -58,21 +71,21 @@ describe('TableRegistry.openTable', () => {
   })
 
   it('creates a fresh table when no code is given', () => {
-    const table = registry.openTable()
+    const table = newTable(registry)
     expect(table.phase).toBe('awaiting-host')
     expect(registry.getTable(table.code)).toBe(table)
   })
 
   it('reopens the same table for a known code', () => {
-    const original = registry.createTable()
-    const reopened = registry.openTable(original.code)
-    expect(reopened).toBe(original)
+    const original = newTable(registry)
+    expect(registry.openTable(original.code)).toEqual({ table: original })
   })
 
   it('creates a fresh table when the given code is unknown', () => {
-    const table = registry.openTable('ZZZZ')
-    expect(table.code).not.toBe('ZZZZ')
-    expect(registry.getTable(table.code)).toBe(table)
+    const result = registry.openTable('ZZZZ')
+    if ('error' in result) throw new Error(result.error)
+    expect(result.table.code).not.toBe('ZZZZ')
+    expect(registry.getTable(result.table.code)).toBe(result.table)
   })
 })
 
@@ -82,7 +95,7 @@ describe('TableRegistry.joinParticipant', () => {
 
   beforeEach(() => {
     registry = makeRegistry()
-    code = registry.createTable().code
+    code = newTable(registry).code
   })
 
   it('rejects an unknown table', () => {
@@ -154,7 +167,7 @@ describe('TableRegistry.joinParticipant', () => {
 describe('TableRegistry.disconnectParticipant', () => {
   it('marks the participant disconnected without removing them', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -171,7 +184,7 @@ describe('TableRegistry.disconnectParticipant', () => {
 
   it('never changes the baton holder when the holder disconnects', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     if ('error' in host) throw new Error(host.error)
 
@@ -183,7 +196,7 @@ describe('TableRegistry.disconnectParticipant', () => {
 
   it('never changes the baton holder when a non-holder disconnects', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     const second = registry.joinParticipant(code, undefined)
     if ('error' in host || 'error' in second) throw new Error('join failed')
@@ -198,7 +211,7 @@ describe('TableRegistry.disconnectParticipant', () => {
 describe('TableRegistry.removeParticipant', () => {
   it('migrates the baton to the longest-present survivor', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     const second = registry.joinParticipant(code, undefined)
     if ('error' in host || 'error' in second) throw new Error('join failed')
@@ -215,7 +228,7 @@ describe('TableRegistry.removeParticipant', () => {
 
   it('returns the table to awaiting-host when the last participant leaves', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     if ('error' in host) throw new Error(host.error)
 
@@ -229,7 +242,7 @@ describe('TableRegistry.removeParticipant', () => {
 
   it('leaves the baton untouched and emits no baton event when a non-holder leaves', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     const second = registry.joinParticipant(code, undefined)
     if ('error' in host || 'error' in second) throw new Error('join failed')
@@ -244,7 +257,7 @@ describe('TableRegistry.removeParticipant', () => {
 describe('TableRegistry.setProfile', () => {
   it('stores the nickname and avatar', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -257,7 +270,7 @@ describe('TableRegistry.setProfile', () => {
 
   it('trims and truncates an over-long nickname', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -268,7 +281,7 @@ describe('TableRegistry.setProfile', () => {
 
   it('treats a blank nickname as no profile change', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -281,7 +294,7 @@ describe('TableRegistry.setProfile', () => {
 
   it('treats a whitespace-only nickname as no profile change', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -294,7 +307,7 @@ describe('TableRegistry.setProfile', () => {
 
   it('still stores a valid nickname and emits a profile-changed event', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -310,7 +323,7 @@ describe('TableRegistry.setProfile', () => {
 describe('TableRegistry.setProfile avatar validation', () => {
   it('rejects an avatarId that names no avatar, as no profile change at all', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -325,7 +338,7 @@ describe('TableRegistry.setProfile avatar validation', () => {
 
   it('rejects an over-long avatarId rather than broadcasting it verbatim', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -337,7 +350,7 @@ describe('TableRegistry.setProfile avatar validation', () => {
 
   it('accepts every id in the shared catalogue', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -349,7 +362,7 @@ describe('TableRegistry.setProfile avatar validation', () => {
 
   it('keeps the avatar already chosen when a later submit names no avatar', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
     registry.setProfile(code, joined.participant.id, 'Ana', 'fox')
@@ -364,7 +377,7 @@ describe('TableRegistry.setProfile avatar validation', () => {
 describe('TableRegistry.snapshot', () => {
   it('reports the baton holder', () => {
     const registry = makeRegistry()
-    const table = registry.createTable()
+    const table = newTable(registry)
     const joined = registry.joinParticipant(table.code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
@@ -378,7 +391,7 @@ describe('TableRegistry.snapshot', () => {
 
   it('never exposes the participant token', () => {
     const registry = makeRegistry()
-    const table = registry.createTable()
+    const table = newTable(registry)
     registry.joinParticipant(table.code, undefined)
 
     const snapshot = registry.snapshot(table)
@@ -411,7 +424,7 @@ describe('TableRegistry.snapshot', () => {
       newToken: sequentialIds('t'),
       shard: 'A',
     })
-    const table = registry.createTable()
+    const table = newTable(registry)
     const first = registry.joinParticipant(table.code, undefined)
     const second = registry.joinParticipant(table.code, undefined)
     const third = registry.joinParticipant(table.code, undefined)
@@ -448,7 +461,7 @@ describe('TableRegistry reads the clock per operation', () => {
       shard: 'A',
     })
 
-    const table = registry.createTable()
+    const table = newTable(registry)
     const first = registry.joinParticipant(table.code, undefined)
     if ('error' in first) throw new Error(first.error)
 
@@ -466,7 +479,7 @@ describe('TableRegistry reads the clock per operation', () => {
 describe('TableRegistry rejoin preserves the baton', () => {
   it('restores connected and keeps the baton when the holder rejoins with their token', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     if ('error' in host) throw new Error(host.error)
 
@@ -485,7 +498,7 @@ describe('TableRegistry rejoin preserves the baton', () => {
 describe('TableRegistry capacity', () => {
   it('fills up to MAX_PARTICIPANTS', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
 
     for (let i = 0; i < MAX_PARTICIPANTS; i += 1) {
       const result = registry.joinParticipant(code, undefined)
@@ -497,7 +510,7 @@ describe('TableRegistry capacity', () => {
 
   it('refuses the participant after that with table-full', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     for (let i = 0; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
 
     const overflow = registry.joinParticipant(code, undefined)
@@ -508,7 +521,7 @@ describe('TableRegistry capacity', () => {
 
   it('still lets someone already at a full table rejoin with their token', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     if ('error' in host) throw new Error(host.error)
     for (let i = 1; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
@@ -524,7 +537,7 @@ describe('TableRegistry capacity', () => {
 
   it('frees the place again when someone leaves', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     if ('error' in host) throw new Error(host.error)
     for (let i = 1; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
@@ -537,14 +550,49 @@ describe('TableRegistry capacity', () => {
 })
 
 describe('TableRegistry code exhaustion', () => {
-  it('throws a named error rather than looping forever once codes run out', () => {
-    const registry = makeRegistry()
+  /**
+   * No table is ever evicted today, so a long-lived process can in principle
+   * fill the code space. Unbounded retrying would hang the event loop with no
+   * message at all, and throwing would kill a process whose only caller is a
+   * socket event listener with no catch above it. A refusal in the return
+   * value is the only one of the three a screen can be told about.
+   *
+   * Note what the refusal does and does not mean: the registry gives up after
+   * a fixed number of redraws, so it is a bound on effort, not a proof that
+   * every code is taken. Opening a table again right afterwards may well
+   * succeed. That is why this returns the first refusal rather than leaving
+   * the registry in some supposedly terminal state.
+   */
+  function untilRefused(registry: TableRegistry): DomainError | null {
+    for (let i = 0; i < 100_000; i += 1) {
+      const result = registry.openTable()
+      if ('error' in result) return result.error
+    }
+    return null
+  }
 
+  it('refuses rather than looping forever once codes run out', () => {
+    expect(untilRefused(makeRegistry())).toBe('table-unavailable')
+  })
+
+  it('refuses by returning, so nothing above it needs a catch', () => {
+    const registry = makeRegistry()
+    untilRefused(registry)
+
+    // The old behaviour threw here, out of a call the server makes from
+    // inside a socket event listener with nothing catching above it.
     expect(() => {
-      // No table is ever evicted today, so a long-lived process can in
-      // principle reach this. Unbounded retrying would hang the event loop
-      // with no message at all; a named error is at least diagnosable.
-      for (let i = 0; i < 100_000; i += 1) registry.createTable()
-    }).toThrow(TableCodeExhaustedError)
+      for (let i = 0; i < 1_000; i += 1) registry.openTable()
+    }).not.toThrow()
+  })
+
+  it('still reopens a table that already exists once the space is crowded', () => {
+    const registry = makeRegistry()
+    const existing = newTable(registry)
+    untilRefused(registry)
+
+    // The refusal is about minting a code, not about serving a screen that
+    // already has one: a television that reloads must still find its table.
+    expect(registry.openTable(existing.code)).toEqual({ table: existing })
   })
 })

@@ -21,17 +21,10 @@ export const MAX_PARTICIPANTS = 8
 /**
  * How many times a colliding code is redrawn before giving up. The code space
  * is finite and nothing evicts a table yet, so "keep trying" is a way to hang
- * the event loop with no diagnosis; this turns that into an error with a name.
+ * the event loop with no diagnosis; this turns that into a refusal the caller
+ * can answer for.
  */
 const MAX_CODE_ATTEMPTS = 100
-
-/** No free table code was found. The code space is full, or nearly. */
-export class TableCodeExhaustedError extends Error {
-  constructor(attempts: number) {
-    super(`No free table code after ${attempts} attempts`)
-    this.name = 'TableCodeExhaustedError'
-  }
-}
 
 const DEFAULT_NICKNAME = ''
 const DEFAULT_AVATAR = 'unset'
@@ -44,6 +37,15 @@ export interface TableRegistryOptions {
   /** The instance character that opens every code this process issues. */
   readonly shard: string
 }
+
+/**
+ * Opening a table can refuse. It is a returned value and not a thrown error
+ * on purpose: the caller is the server's message handling, which runs inside
+ * a socket event listener with no catch above it anywhere.
+ */
+export type OpenTableResult =
+  | { readonly table: Table }
+  | { readonly error: DomainError }
 
 export type JoinResult =
   | { readonly table: Table; readonly participant: Participant; readonly events: DomainEvent[] }
@@ -98,29 +100,6 @@ export class TableRegistry {
     this.#shard = options.shard
   }
 
-  createTable(): Table {
-    let code: string | undefined
-    for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
-      const [candidate, nextRng] = generateTableCode(this.#rng, this.#shard)
-      this.#rng = nextRng
-      if (!this.#tables.has(candidate)) {
-        code = candidate
-        break
-      }
-    }
-    if (code === undefined) throw new TableCodeExhaustedError(MAX_CODE_ATTEMPTS)
-
-    const table: MutableTable = {
-      code,
-      phase: 'awaiting-host',
-      participants: [],
-      batonHolderId: null,
-      createdAt: this.#clock.now(),
-    }
-    this.#tables.set(code, table)
-    return table
-  }
-
   getTable(code: string): Table | undefined {
     return this.#findMutable(code)
   }
@@ -131,10 +110,27 @@ export class TableRegistry {
    * expired code should reopen a table or start over is a decision about
    * tables, so it lives here rather than in the transport-facing layer that
    * calls it.
+   *
+   * The only way to obtain a table, and it refuses rather than throws.
+   * Reopening a code that already names a live table always succeeds; only
+   * minting a fresh one can run out.
    */
-  openTable(code?: string): Table {
+  openTable(code?: string): OpenTableResult {
     const existing = code === undefined ? undefined : this.#findMutable(code)
-    return existing ?? this.createTable()
+    if (existing) return { table: existing }
+
+    const minted = this.#mintCode()
+    if (minted === undefined) return { error: 'table-unavailable' }
+
+    const table: MutableTable = {
+      code: minted,
+      phase: 'awaiting-host',
+      participants: [],
+      batonHolderId: null,
+      createdAt: this.#clock.now(),
+    }
+    this.#tables.set(minted, table)
+    return { table }
   }
 
   joinParticipant(code: string, token: string | undefined): JoinResult {
@@ -257,6 +253,16 @@ export class TableRegistry {
     }))
 
     return { code: table.code, phase: table.phase, participants }
+  }
+
+  /** A code no live table holds, or undefined once the space is full. */
+  #mintCode(): string | undefined {
+    for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
+      const [candidate, nextRng] = generateTableCode(this.#rng, this.#shard)
+      this.#rng = nextRng
+      if (!this.#tables.has(candidate)) return candidate
+    }
+    return undefined
   }
 
   #findMutable(code: string): MutableTable | undefined {

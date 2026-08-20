@@ -53,6 +53,10 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
   'table-full': 'This table is full. Scan the code on the screen once a place frees up.',
   'not-allowed': 'That did not work here. Scan the code on the screen to join again.',
   'invalid-message': 'Something went wrong. Scan the code on the screen to join again.',
+  // A screen-only failure in practice — a phone never asks for a table to be
+  // opened — but this map is total, so it gets an honest sentence rather
+  // than a placeholder.
+  'table-unavailable': 'No table could be opened. Whoever set up the screen will have to restart it.',
 }
 
 export function errorText(code: ErrorCode): string {
