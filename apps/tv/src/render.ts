@@ -58,7 +58,15 @@ export function renderTable(root: HTMLElement, view: TvView): void {
 
   const list = element('ul', 'mt-16')
   for (const person of view.participants) {
-    const item = element('li', 'mb-6 text-5xl')
+    // A dropped participant has to be legible as dropped from three metres,
+    // by someone who cannot touch the screen to investigate. The attributes
+    // below are for tests and for whoever inspects the DOM; they are not a
+    // signal to a human, so the difference is carried by the classes and by a
+    // word, not by the attributes.
+    const item = element(
+      'li',
+      person.connected ? 'mb-6 text-5xl' : 'mb-6 text-5xl opacity-40',
+    )
     item.setAttribute('data-baton', String(person.hasBaton))
     item.setAttribute('data-connected', String(person.connected))
 
@@ -71,6 +79,14 @@ export function renderTable(root: HTMLElement, view: TvView): void {
     // A participant who has not chosen a nickname yet renders a placeholder
     // rather than an empty row, so the seat is still visible on the screen.
     item.appendChild(element('span', '', person.nickname === '' ? '…' : person.nickname))
+
+    // Margin, never flexbox `gap` — Chromium 84 and the target is 68 to 79.
+    if (!person.connected) {
+      item.appendChild(
+        element('span', 'ml-6 text-3xl uppercase tracking-widest text-clay', 'Reconnecting'),
+      )
+    }
+
     list.appendChild(item)
   }
   root.appendChild(list)

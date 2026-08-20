@@ -43,6 +43,30 @@ describe('renderTable', () => {
     expect(root.querySelector('[data-baton="true"]')).not.toBeNull()
   })
 
+  it('renders a disconnected participant visibly differently, not just in an attribute', () => {
+    // The screen is watched from three metres by people who cannot touch it.
+    // An attribute nobody can see is not a signal: this asserts the rendered
+    // classes actually differ, which a data-attribute-only marker would fail.
+    const online = document.createElement('div')
+    renderTable(online, { code: 'KXTP', participants: [participant({ connected: true })] })
+    const offline = document.createElement('div')
+    renderTable(offline, { code: 'KXTP', participants: [participant({ connected: false })] })
+
+    const onlineItem = online.querySelector('li')!
+    const offlineItem = offline.querySelector('li')!
+    expect(offlineItem.className).not.toBe(onlineItem.className)
+  })
+
+  it('says in words that a disconnected participant is reconnecting', () => {
+    renderTable(root, { code: 'KXTP', participants: [participant({ connected: false })] })
+    expect(root.textContent).toMatch(/reconnecting/i)
+  })
+
+  it('says nothing about reconnecting while everyone is connected', () => {
+    renderTable(root, { code: 'KXTP', participants: [participant({ connected: true })] })
+    expect(root.textContent).not.toMatch(/reconnecting/i)
+  })
+
   it('marks a disconnected participant', () => {
     renderTable(root, { code: 'KXTP', participants: [participant({ connected: false })] })
     expect(root.querySelector('[data-connected="false"]')).not.toBeNull()
