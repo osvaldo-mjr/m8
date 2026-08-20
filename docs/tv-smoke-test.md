@@ -131,7 +131,7 @@ fixed:
 **Two defects were found by this run that no automated test had caught**, both
 worth recording because they justify the existence of this checklist:
 
-1. The screen encoded connection state in a  attribute and
+1. The screen encoded connection state in a `data-connected` attribute and
    styled nothing, so a participant who had left rendered identically to one
    who was present. The test guarding it asserted the attribute existed —
    true, and invisible to anyone in the room.
