@@ -15,9 +15,11 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 3000
-    # No node_modules named volume: this service bind-mounts no source, so a
-    # named volume would mount empty over the image's own node_modules and
-    # break the container on first run. The day a dev override bind-mounts
-    # source in, add it back here (`- node_modules:/app/node_modules`, plus
-    # a top-level `volumes: node_modules:` block) so Linux-built binaries
-    # never mix with Windows-built ones.
+    # No node_modules named volume: on first creation it would be
+    # auto-populated from the image's own node_modules and then never
+    # refreshed, so a later dependency change would be silently masked by
+    # that stale copy. It stays out until a source bind mount makes the
+    # isolation genuinely necessary; add it back then
+    # (`- node_modules:/app/node_modules`, plus a top-level `volumes:
+    # node_modules:` block) so Linux-built binaries never mix with
+    # Windows-built ones.
