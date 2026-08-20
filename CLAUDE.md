@@ -111,6 +111,12 @@ Target: Samsung Tizen and LG webOS, models up to roughly 5 years old, meaning
   detected: off on LAN, on once deployed over HTTPS.
 - Flutter is installed on the machine but unused. Everything is browser-based.
   Native apps are a distant future.
+- Shutdown does not drain. Closing the server force-disconnects every open
+  socket and stops accepting new connections at the same instant, so a table
+  still open at that moment loses its screen and phones outright. Real
+  draining is the routing-based mechanism from §4.19 of the design document
+  (bring up the new instance, stop routing to the old one, wait for it to
+  empty), arriving with the M2 — Publication milestone.
 
 ### Commands
 
