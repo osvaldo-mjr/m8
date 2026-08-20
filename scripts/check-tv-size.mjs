@@ -34,15 +34,31 @@ function missingAssetKinds(files) {
 // point the guard at a disposable fixture directory instead of the real
 // `apps/tv/dist`. `npm run guard:size` passes no argument, so the default
 // still governs normal use.
-function main(tvDist) {
+/**
+ * The ceiling, normally from `budget.json`. Overridable so a test can prove
+ * the guard actually *fails* a bundle that exceeds it: nothing else in the
+ * suite pins the rejection path, and a size guard that never rejects is
+ * indistinguishable from no guard at all. Real use passes no override.
+ */
+function budgetBytes(override) {
+  if (override === undefined) {
+    return JSON.parse(readFileSync('budget.json', 'utf8')).tvBundleGzipBytes
+  }
+  const parsed = Number(override)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Budget override must be a positive integer of bytes, got ${override}`)
+  }
+  return parsed
+}
+
+function main(tvDist, budgetOverride) {
   const files = assetFiles(tvDist)
   const missing = missingAssetKinds(files)
   if (missing.length > 0) {
     throw new Error(`No ${missing.join(' and no ')} found in ${tvDist}. Run the build first.`)
   }
 
-  const budget = JSON.parse(readFileSync('budget.json', 'utf8'))
-  const limit = budget.tvBundleGzipBytes
+  const limit = budgetBytes(budgetOverride)
 
   let total = 0
   for (const file of files) {
@@ -63,5 +79,5 @@ function main(tvDist) {
 // rather than string-concatenating a `file://` prefix onto it — the naive
 // comparison silently never matches there, and `main()` never runs.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main(process.argv[2] ?? TV_DIST)
+  main(process.argv[2] ?? TV_DIST, process.argv[3] ?? process.env.M8_TV_BUDGET_BYTES)
 }

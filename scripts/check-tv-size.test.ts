@@ -22,8 +22,10 @@ describe('the guard script (subprocess)', () => {
   const scriptPath = fileURLToPath(new URL('./check-tv-size.mjs', import.meta.url))
   const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 
-  function runGuard(targetDir?: string) {
-    const args = targetDir === undefined ? [scriptPath] : [scriptPath, targetDir]
+  function runGuard(targetDir?: string, budgetBytes?: number) {
+    const args = [scriptPath]
+    if (targetDir !== undefined) args.push(targetDir)
+    if (budgetBytes !== undefined) args.push(String(budgetBytes))
     return spawnSync(process.execPath, args, { cwd: repoRoot, encoding: 'utf8' })
   }
 
@@ -41,6 +43,48 @@ describe('the guard script (subprocess)', () => {
       const result = runGuard(dir)
       expect(result.status).toBe(0)
       expect(result.stdout).toMatch(/Total: \d+ B gzipped\. Budget: \d+ B\./)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('exits non-zero when the bundle exceeds the budget, and says by how much', () => {
+    // The rejection path itself, end to end. Everything else here pins what
+    // the guard does when it passes; a size guard whose failure is never
+    // exercised is indistinguishable from no guard at all.
+    const dir = makeFixtureDir({ 'main.js': 'console.log("tv")', 'main.css': 'body { color: red }' })
+    try {
+      const result = runGuard(dir, 1)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toMatch(/over budget/)
+      expect(result.stdout).toContain('Budget: 1 B.')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('exits 0 when the same bundle is measured against a budget it fits', () => {
+    // The mirror of the case above, against the same fixture: what decides
+    // is the ceiling, not something incidental to the files.
+    const dir = makeFixtureDir({ 'main.js': 'console.log("tv")', 'main.css': 'body { color: red }' })
+    try {
+      const result = runGuard(dir, 1_000_000)
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('Budget: 1000000 B.')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('exits non-zero on a budget override that is not a positive whole number of bytes', () => {
+    const dir = makeFixtureDir({ 'main.js': 'console.log("tv")', 'main.css': 'body { color: red }' })
+    try {
+      const result = spawnSync(process.execPath, [scriptPath, dir, 'lots'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      })
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toMatch(/Budget override/)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
