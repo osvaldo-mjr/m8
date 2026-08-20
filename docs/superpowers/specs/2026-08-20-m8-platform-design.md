@@ -390,9 +390,24 @@ The risk of this split is the machine's Node version drifting from the image's.
 The version is declared once, enforced by `package.json`, and consumed by the
 Dockerfile from the same declaration.
 
-Other Windows specifics handled by design: `node_modules` is a **named volume**,
-never a bind mount, so Linux-built binaries never mix with Windows ones; and
-`.gitattributes` normalizes to LF so shell scripts do not break inside the image.
+Other Windows specifics handled by design: `.gitattributes` normalizes to LF so
+shell scripts do not break inside the image; and the compose file deliberately
+declares **no `node_modules` volume**.
+
+That last one is worth stating as a decision rather than an omission. A named
+volume is the standard answer to the Windows problem — it keeps Linux-built
+binaries from mixing with Windows-built ones — but it is the answer to a
+problem this project does not yet have, because nothing bind-mounts source into
+the container: the image builds its own `node_modules` and runs from it. Adding
+the volume anyway would cost something real. Docker auto-populates a named
+volume from the image the first time it is created and then never refreshes it,
+so every later dependency change would be masked by that first stale copy,
+silently, until somebody thought to delete the volume. The container is the
+production-equivalent artifact; it must not be the one place where a dependency
+change quietly fails to take effect.
+
+The volume goes in the moment a source bind mount does, and not before — with
+the isolation argument then being a real one.
 
 ---
 
