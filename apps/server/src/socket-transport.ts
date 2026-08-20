@@ -6,6 +6,27 @@ import { Server as SocketServer, type Socket } from 'socket.io'
 const CHANNEL = 'm8'
 
 /**
+ * How long the server may take to notice a device that vanished without
+ * closing its socket — a phone going into aeroplane mode, losing battery, or
+ * being carried out of range. A clean tab close is detected immediately; only
+ * a silent disappearance needs the heartbeat.
+ *
+ * Socket.IO defaults to 25s between pings and 20s of grace, so a silent
+ * departure takes up to 45 seconds to register. In a living room that is far
+ * too long: the screen would keep showing someone who left, and the seat
+ * would not free until the reconnection window on top of that.
+ *
+ * The design is to notice quickly and forgive slowly — the screen says
+ * `Reconnecting` within seconds, while the seat is held far longer. A phone
+ * whose Wi-Fi flickers is therefore only ever labelled, never evicted, so the
+ * cost of noticing too eagerly is a word on a screen.
+ */
+export const HEARTBEAT = {
+  pingInterval: 5_000,
+  pingTimeout: 5_000,
+} as const
+
+/**
  * Which transport a device actually negotiated, and whether it later upgraded.
  *
  * This exists because the television smoke test tells the operator to read the
@@ -44,7 +65,11 @@ export class SocketIoTransport implements Transport {
     httpServer: HttpServer,
     onNegotiation: (negotiation: TransportNegotiation) => void = () => {},
   ) {
-    this.#io = new SocketServer(httpServer, { serveClient: false })
+    this.#io = new SocketServer(httpServer, {
+      serveClient: false,
+      pingInterval: HEARTBEAT.pingInterval,
+      pingTimeout: HEARTBEAT.pingTimeout,
+    })
     this.#io.on('connection', (socket: Socket) => {
       onNegotiation({
         connectionId: socket.id,
