@@ -1,0 +1,10 @@
+@import '@m8/tokens/tokens.css';
+@import 'tailwindcss';
+
+@theme {
+  --color-felt-900: var(--m8-felt-900);
+  --color-felt-700: var(--m8-felt-700);
+  --color-chalk: var(--m8-chalk);
+  --color-brass: var(--m8-brass);
+  --color-clay: var(--m8-clay);
+}
