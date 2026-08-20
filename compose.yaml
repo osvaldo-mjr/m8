@@ -1,0 +1,23 @@
+# Shaped now so postgres (M3) and traefik (M2) slot in without a rewrite.
+services:
+  server:
+    build:
+      context: .
+      # No explicit NODE_VERSION build arg here: the Dockerfile's own ARG
+      # default already carries the version, and it is kept in sync with
+      # .nvmrc by `npm run check:node-version` (part of `npm run docker`).
+      # A second, separately-maintained copy of the version in this file
+      # would just reopen the drift that check exists to close.
+    ports:
+      # Published on all interfaces so the television and phones on the LAN
+      # can reach the container.
+      - "0.0.0.0:3000:3000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+    # No node_modules named volume: this service bind-mounts no source, so a
+    # named volume would mount empty over the image's own node_modules and
+    # break the container on first run. The day a dev override bind-mounts
+    # source in, add it back here (`- node_modules:/app/node_modules`, plus
+    # a top-level `volumes: node_modules:` block) so Linux-built binaries
+    # never mix with Windows-built ones.

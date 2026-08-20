@@ -15,6 +15,8 @@
     "dev": "concurrently -n tv,phone,server -c blue,magenta,green \"npm run dev -w @m8/tv\" \"npm run dev -w @m8/phone\" \"npx tsx watch apps/server/src/main.ts\"",
     "build": "npm run build -w @m8/tv && npm run build -w @m8/phone",
     "lan": "npm run build && npx tsx apps/server/src/main.ts",
+    "check:node-version": "npx tsx scripts/check-node-version.ts",
+    "docker": "npm run check:node-version && docker compose up --build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
