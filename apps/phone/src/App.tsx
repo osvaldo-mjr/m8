@@ -2,6 +2,7 @@ import type { ErrorCode, ServerToClient, TableSnapshot } from '@m8/protocol'
 import { useEffect, useRef, useState } from 'react'
 import { AVATARS } from './avatars.js'
 import { codeFromLocation, connectPhone, type PhoneClient } from './client.js'
+import { describeProfileSubmission } from './profile.js'
 import { determineScreen } from './screen.js'
 
 export function App() {
@@ -21,11 +22,21 @@ export function App() {
 
   useEffect(() => {
     if (code === null) return
-    client.current = connectPhone(code, (message: ServerToClient) => {
+    const phoneClient = connectPhone(code, (message: ServerToClient) => {
       if (message.type === 'welcome') setParticipantId(message.participantId)
       if (message.type === 'tableState') setTable(message.table)
       if (message.type === 'error') setError(message.code)
     })
+    client.current = phoneClient
+
+    // StrictMode mounts, cleans up, then mounts again in development. This
+    // teardown is what keeps that a single live connection rather than two:
+    // without it, both the discarded socket and its replacement would greet
+    // the server, and the server would mint two participants for one phone.
+    return () => {
+      phoneClient.disconnect()
+      client.current = null
+    }
   }, [code])
 
   if (code === null) {
@@ -47,11 +58,14 @@ export function App() {
   }
 
   if (screen.kind === 'profile') {
+    const submission = describeProfileSubmission(nickname)
+
     return (
       <form
         className="flex flex-col gap-4 p-6"
         onSubmit={(event) => {
           event.preventDefault()
+          if (!submission.canSubmit) return
           client.current?.send({ type: 'setProfile', nickname, avatarId })
         }}
       >
@@ -84,9 +98,18 @@ export function App() {
           ))}
         </div>
 
-        <button className="rounded-lg bg-brass p-4 text-xl text-felt-900" type="submit">
+        <button
+          className="rounded-lg bg-brass p-4 text-xl text-felt-900 disabled:opacity-40"
+          type="submit"
+          disabled={!submission.canSubmit}
+        >
           Take a place
         </button>
+        {submission.reason !== null && (
+          <p className="text-sm text-chalk opacity-70" aria-live="polite">
+            {submission.reason}
+          </p>
+        )}
       </form>
     )
   }

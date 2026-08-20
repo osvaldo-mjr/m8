@@ -40,6 +40,14 @@ export function determineTokenToStore(message: ServerToClient): string | null {
 
 export interface PhoneClient {
   send(message: ClientToServer): void
+  /**
+   * Closes the socket and stops the message handler from firing again.
+   * React's StrictMode double-invokes effects in development, so without
+   * this an unmounted-and-remounted component would leave two live sockets
+   * behind it, each greeting the server on its own and racing to be "the"
+   * participant for this device.
+   */
+  disconnect(): void
 }
 
 export function connectPhone(
@@ -47,13 +55,17 @@ export function connectPhone(
   onMessage: (message: ServerToClient) => void,
 ): PhoneClient {
   const socket = io({ transports: ['websocket', 'polling'] })
+  let closed = false
 
   socket.on('connect', () => {
+    if (closed) return
     const storedToken = window.localStorage.getItem(TOKEN_KEY)
     socket.emit(CHANNEL, determineHelloMessage(code, storedToken))
   })
 
   socket.on(CHANNEL, (message: ServerToClient) => {
+    if (closed) return
+
     const token = determineTokenToStore(message)
     if (token !== null) window.localStorage.setItem(TOKEN_KEY, token)
 
@@ -66,5 +78,12 @@ export function connectPhone(
 
   return {
     send: (message) => socket.emit(CHANNEL, message),
+    disconnect: () => {
+      // Set before closing, not after: a message already in flight when
+      // disconnect() is called must still be dropped by the handler above
+      // rather than reaching a component that is mid-unmount.
+      closed = true
+      socket.disconnect()
+    },
   }
 }

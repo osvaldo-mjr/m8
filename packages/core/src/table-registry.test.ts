@@ -264,6 +264,46 @@ describe('TableRegistry.setProfile', () => {
 
     expect(registry.getTable(code)?.participants[0]?.nickname).toHaveLength(16)
   })
+
+  it('treats a blank nickname as no profile change', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    const joined = registry.joinParticipant(code, undefined)
+    if ('error' in joined) throw new Error(joined.error)
+
+    const events = registry.setProfile(code, joined.participant.id, '', 'fox')
+
+    expect(registry.getTable(code)?.participants[0]?.nickname).toBe('')
+    expect(registry.getTable(code)?.participants[0]?.avatarId).not.toBe('fox')
+    expect(events).toEqual([])
+  })
+
+  it('treats a whitespace-only nickname as no profile change', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    const joined = registry.joinParticipant(code, undefined)
+    if ('error' in joined) throw new Error(joined.error)
+
+    const events = registry.setProfile(code, joined.participant.id, '   ', 'fox')
+
+    expect(registry.getTable(code)?.participants[0]?.nickname).toBe('')
+    expect(registry.getTable(code)?.participants[0]?.avatarId).not.toBe('fox')
+    expect(events).toEqual([])
+  })
+
+  it('still stores a valid nickname and emits a profile-changed event', () => {
+    const registry = makeRegistry()
+    const code = registry.createTable().code
+    const joined = registry.joinParticipant(code, undefined)
+    if ('error' in joined) throw new Error(joined.error)
+
+    const events = registry.setProfile(code, joined.participant.id, 'Ana', 'fox')
+
+    expect(registry.getTable(code)?.participants[0]?.nickname).toBe('Ana')
+    expect(events).toEqual([
+      { type: 'profile-changed', code, participantId: joined.participant.id },
+    ])
+  })
 })
 
 describe('TableRegistry.snapshot', () => {

@@ -194,7 +194,15 @@ export class TableRegistry {
     const participant = table?.participants.find((p) => p.id === participantId)
     if (!table || !participant) return []
 
-    participant.nickname = nickname.trim().slice(0, NICKNAME_MAX_LENGTH)
+    const trimmed = nickname.trim()
+    // A blank nickname carries no information about intent: the empty
+    // string is also the sentinel a client reads as "no profile chosen
+    // yet", so accepting one here would make that sentinel ambiguous with a
+    // deliberate choice. Treated as no change at all, not a change to an
+    // empty nickname, so a stray submit cannot discard an avatar pick either.
+    if (trimmed === '') return []
+
+    participant.nickname = trimmed.slice(0, NICKNAME_MAX_LENGTH)
     participant.avatarId = avatarId
     return [{ type: 'profile-changed', code: table.code, participantId }]
   }
