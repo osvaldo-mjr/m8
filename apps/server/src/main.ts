@@ -8,7 +8,13 @@ const host = process.env['HOST'] ?? '0.0.0.0'
 const app = await buildApp({ tvRoot: defaultRoots.tv, phoneRoot: defaultRoots.phone })
 await app.listen({ port, host })
 
-for (const url of lanUrls(port, networkInterfaces())) {
+const { urls, usedFallback } = lanUrls(port, networkInterfaces())
+if (usedFallback) {
+  app.log.warn(
+    'No private-range address found on this machine; showing every non-internal IPv4 address instead.',
+  )
+}
+for (const url of urls) {
   app.log.info(`Large screen: ${url}`)
 }
 

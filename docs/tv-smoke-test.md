@@ -47,7 +47,9 @@ when it is a network-profile problem.
 ## Steps
 
 1. Run `npm run lan` on the PC and note the printed LAN URL (the log line
-   reads `Large screen: http://192.168.x.x:3000`, or similar).
+   reads `Large screen: http://192.168.x.x:3000`, or similar). If more than
+   one `Large screen:` line prints, use the one on the same network as the
+   phone (usually the Wi-Fi or Ethernet adapter) and ignore the rest.
 2. Open that URL in the television browser.
 3. Confirm the table code renders and is legible from three metres.
 4. Confirm the QR code renders and scans from a phone.
