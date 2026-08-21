@@ -65,6 +65,24 @@ when it is a network-profile problem.
 9. Turn the phone Wi-Fi off and on; confirm the television marks the
    participant disconnected and then connected again.
 
+The steps below arrived with the visual identity and **have not been run on a
+real set yet**. Two self-hosted `woff2` files and a CSS `transform` are new
+demands on this browser generation; both are documented as supported on
+Chromium 68, and neither has an experiment behind it.
+
+10. Confirm the four code characters render in the wide, heavy face — they
+    should be visibly wider and blacker than the address line beneath them. If
+    they look like ordinary system type, the self-hosted font did not load and
+    the fallback stack is drawing them.
+11. Confirm each code tile and the QR sit very slightly turned, while the
+    violet table itself and the row of people are square. If everything is
+    square, `transform: rotate()` is not being applied.
+12. Watch the row of people while a phone joins: the arriving chip should pop
+    once, and no chip already on screen should move or re-animate.
+13. With three or more people seated, confirm each has a visibly different
+    colour, and that the colour on somebody's phone is the same as the colour
+    of their chip on the television.
+
 ## What to record on failure
 
 - The set's model and firmware year.
@@ -143,6 +161,13 @@ Still open:
 - The set model and firmware year.
 - The screen still gives no visual sign of who holds the baton — the same
   defect as the first one above, in the same function, on an attribute
-  nobody can see. Left deliberately: no baton-only action exists yet, and
-  how it should look belongs to the visual identity pass.
+  nobody can see. This was left for the visual identity pass, which has now
+  happened and did not settle it: the approved direction describes the code
+  tiles, the QR, the per-person colour and the row of people, and says
+  nothing about the baton. Inventing a mark for it would have been the one
+  thing that pass was told not to do. It stays open, and it is now a
+  question for whoever specifies the first game, where a baton-only action
+  finally exists to justify a mark.
+- Steps 10 to 13 (typography, tilt, the arrival pop, the per-person colour)
+  have never been run on a television.
 
