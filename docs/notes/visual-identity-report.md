@@ -72,13 +72,23 @@ in the stylesheet: two files with no compiler between them, where a mismatch
 would produce an invisible chip on a television and nothing else would notice.
 
 **Arrival order is the participant's index in the snapshot the server sends.**
-Both screens read the same index out of the same message, so they cannot
-disagree about who is coral: the television writes `--m8-person` onto the chip,
-the phone writes it onto its shell, and both stylesheets read `var(--m8-person)`
-without knowing whose colour it is.
+Both screens read the same index out of the same message: the television writes
+`--m8-person` onto the chip, the phone writes it onto its shell, and both
+stylesheets read `var(--m8-person)` without knowing whose colour it is.
+
+> **Correction, 2026-08-21.** This paragraph originally ended "so they cannot
+> disagree about who is coral". They could, and did. The television wrote the
+> colour once, when the chip element was created, and never again — so after
+> anybody left, it kept every survivor's original colour while the phones
+> recomputed from the new index, and the next person to join was handed a
+> colour somebody at the table was already wearing. The defect and its fix are
+> in *The colour, after somebody leaves* below. The claim above is true of the
+> design and was not true of the code; it is stated as design here, and the
+> guarantee is now carried by a test rather than by this sentence.
 
 It is not stable across a departure: if the second of four people leaves, the
-two behind them shift one colour along. That is deliberate. The alternative —
+two behind them shift one colour along. That is deliberate — and until
+2026-08-21 only the phone actually did it. The alternative —
 hashing a participant id — lets two people at one table land on the same
 colour, and two identical colours in the room breaks the one thing this exists
 for. The trade is written down at the top of the module.
@@ -210,11 +220,10 @@ zero occurrences of `:where(`, `:is(`, `clamp(`, `aspect-ratio`,
 those two strings are custom property *names* such as `--m8-safe-inset` and
 `--m8-piece-gap`, which is why margins are used for every space on the screen).
 
-**No automated guard covers this.** The syntax guard parses JavaScript; the
-size guard weighs bytes; nothing parses the emitted CSS against the old target.
-A third guard would be cheap and is the obvious next piece of work, but it is
-scope this pass did not carry, and until it exists the only thing standing
-between the television and a `:where()` is review.
+**No automated guard covered this at the time of writing.** The syntax guard
+parses JavaScript; the size guard weighs bytes; nothing parsed the emitted CSS
+against the old target. That third guard was written the next day —
+`scripts/check-tv-css.mjs`, described below.
 
 ## The renderer
 
@@ -329,7 +338,8 @@ Two things were found that way and fixed:
 - **`prefers-reduced-motion` does nothing on the oldest supported sets.** See
   above. This is a property of the target, not a defect to fix.
 - **Nicknames outside Latin-1** fall back to a system font.
-- **No guard parses the emitted CSS** against the old target.
+- ~~**No guard parses the emitted CSS** against the old target.~~ Closed on
+  2026-08-21 by `scripts/check-tv-css.mjs`.
 - **The baton still has no visual mark.** The smoke-test document had left this
   to "the visual identity pass". The approved direction describes the code
   tiles, the QR, the per-person colour and the row of people, and says nothing
@@ -343,3 +353,346 @@ Two things were found that way and fixed:
   the person colours are used as fills behind emoji and as short uppercase
   labels on the ground, where they are comfortable — but no numbers were
   computed and no tool was run.
+
+---
+
+# Review follow-up — the defects the visual identity shipped with
+
+Written 2026-08-21. Everything below describes the working tree at the moment
+of writing: branch `main`, the work committed, nothing pushed. Every figure was
+measured on this machine on that date, in the container, with a real Chromium
+driven over the DevTools protocol — not recalled and not reasoned about.
+
+A review of the pass above found four defects and three smaller gaps. All seven
+are closed. Two of them were the kind that only a browser finds, so the
+verification for those is a browser too, and both were turned into something
+that can fail in CI rather than something somebody has to look at again.
+
+## The row of people broke the safe area with ordinary names
+
+**What was wrong.** `.m8-people` wrapped, and the note in the stylesheet said
+the table above shrinks to pay for the second row. It cannot. `.m8-table` is a
+column flex item whose content — the QR, 432px at 1920 — sets a floor it will
+not go below, so after two lines there is nothing left to pay with. Measured in
+Chrome at eight participants, sweeping nickname length:
+
+| Nickname length | Lines | Where the last chip ended up |
+|---|---|---|
+| up to 9 | 2 | on the safe line |
+| 10 to 15 | 3 | 72px into the overscan at 1920×1080, 28px at 1280×720 |
+| 16 | 4 | two chips off the panel entirely, at both resolutions |
+
+`NICKNAME_MAX_LENGTH` is 16 and `MAX_PARTICIPANTS` is 8, so every one of those
+rows is inside what the product permits, and ten characters is a name, not an
+attack. A television has no scrollbar and nobody standing at it to scroll.
+
+The wrap fix looked sufficient because the check that accepted it used eight
+people with *one* long nickname.
+
+**What was done.** A chip is now capped at a quarter of the row, and everything
+inside it truncates rather than widening it:
+
+- `.m8-chip` gets `flex: 0 0 auto`, `max-width: 25%` and `overflow: hidden`.
+- The space between chips moved from `margin-right` to `padding-right`, so it
+  is *inside* the quarter. Four chips of 25% plus four margins is more than a
+  line holds, and the fourth would have wrapped.
+- The nickname and the `RECONNECTING` note are a column (`.m8-chip-text`) with
+  `min-width: 0`, each `overflow: hidden; text-overflow: ellipsis`. A flex
+  item's floor is its content unless it is told otherwise, so `min-width: 0` is
+  what lets the cap bite at all.
+
+A percentage rather than a pixel width, because the safe area is a percentage
+of the screen: one rule holds at 1280, at 1920 and at whatever a laptop is,
+with no breakpoint to keep in step. Four to a line is not a taste — eight is
+what the table holds and two lines is what the screen has room for, so it is
+the only cap that works.
+
+Two consequences, both deliberate:
+
+- **The note moved under the name rather than beside it.** `RECONNECTING` set
+  beside a nickname does not fit in a quarter of a 1280-wide screen, and
+  squeezing the name to make room would have hidden *which* person had gone.
+  It is smaller and less tracked than the other eyebrows and has its own token
+  (`--m8-chip-note-type`, 19px and 13px) rather than sharing `--m8-note-type`
+  with the error code, which has no such constraint. The size was chosen by
+  measuring the rendered text against its box, not by estimating: at the first
+  size tried it overflowed by 4 to 13px and was being ellipsised.
+- **Below four people the cap is width nobody is using.** A table of two would
+  have truncated two nicknames with three quarters of the row empty, which is a
+  regression the fix should not introduce. The renderer writes `data-abreast`
+  on the row — the count, never more than four — and three rules relax the cap
+  to 100%, 50% and 33.3333%. They only ever loosen, and only for counts that
+  fit on one line anyway, so the two-line guarantee does not depend on them; a
+  row that somehow never receives the attribute keeps the strict quarter rather
+  than losing it.
+
+**One more defect found while measuring.** The disc was giving up thirteen
+pixels of its width and none of its height when the chip was capped, so the one
+circle carrying a person's colour was drawn as an ellipse at eight people and a
+circle at four. `flex: 0 0 auto` on `.m8-chip-disc`. Discs now measure 96×96 and
+60×60 in every case below.
+
+**The covering test.** `scripts/tv-safe-area.ts` and
+`scripts/tv-safe-area.test.ts`, following the pattern of
+`scripts/tv-size-budget.ts`: the box arithmetic is a pure module exercised with
+plain numbers, and the test is what reads the real stylesheet and feeds it in.
+The sweep is now two claims rather than one eyeball:
+
+1. **No string anybody can type changes how many chips fit on a line.** The
+   test asserts the stylesheet facts that make that true — the cap, the
+   `overflow`, the padding-not-margin, the `min-width: 0`, the ellipsis on both
+   the name and the note, and that the relaxed caps are never narrower than the
+   unconditional one and never apply at a full line.
+2. **Given (1), the arithmetic closes** at every count from 1 to
+   `MAX_PARTICIPANTS`, at 1280×720 and at 1920×1080, including the QR's turned
+   bounding box fitting inside the table it lies on. The sizes come from
+   `styles.css` and `tokens.css` rather than being restated, so the test fails
+   when a size changes rather than when somebody remembers to update it.
+
+It also guards itself from both ends: it asserts that removing the cap (three
+lines of people) *does* overflow at both resolutions, and that the maximum tilt
+it assumes still matches `TILT_MAX_DEGREES` in `apps/tv/src/tilt.ts`.
+
+**What that test still cannot know is font metrics** — whether `RECONNECTING`
+fits the width it is given is a question for a browser. What makes that a
+cosmetic question rather than a layout one is claim (1): the text truncates, so
+it cannot move a chip onto a third line whatever it measures.
+
+**The evidence.** The container was built and run, and the large screen driven
+in headless Chromium at both resolutions over 32 cases: eight people at
+nicknames of 1, 6, 9, 10, 12, 14 and 16 characters; eight people with three of
+them dropped and with all eight dropped; five, four, three, two and one people
+at sixteen characters; and an empty table. Every case: **two lines or fewer, the
+last chip's bottom edge exactly on the safe line and never past it, nothing
+past the safe area on the right, no document scroll, the QR entirely inside the
+violet surface with 19 to 97px to spare, discs square, and the note never
+clipped.** 32 of 32.
+
+## The colour, after somebody leaves
+
+**What was wrong.** `newChip(index)` wrote `--m8-person` when the element was
+created and `updateChip` never refreshed it. Chip elements are reused — that is
+what the arrival animation rests on — so the television kept every survivor's
+original colour while the phones recomputed from the array index:
+
+```
+four seated, TV:   a→1  b→2  c→3  d→4
+b leaves,    TV:   a→1  c→3  d→4
+b leaves, phones:  a→1  c→2  d→3        ← already disagreeing
+e joins,     TV:   a→1  c→3  d→4  e→4   ← two people, one colour
+e joins,  phones:  a→1  c→2  d→3  e→4
+```
+
+`packages/tokens/src/person-color.ts` states the shift on departure is
+deliberate, and that the alternative "lets two people at one table land on the
+same colour, and two identical colours in the room breaks the one thing this is
+for". Only the phone implemented the shift, so the design produced exactly the
+failure it was written to prevent — and it produced it on the milestone's own
+definition of done: somebody leaves for good and a third person scans the QR.
+
+**What was done.** The property write moved out of `newChip` and into
+`updateChip`, which now takes the arrival index and is called on every render.
+`newChip` no longer takes an index at all, so there is nowhere left to write a
+colour that could go stale.
+
+**The covering test.** Nothing in the suite covered what a departure does to
+colour; the existing test covered a join, which is the one case where writing
+once happens to be right. `apps/tv/src/render.test.ts` gained
+`when somebody leaves`: that everybody behind a departure shifts one colour
+along, that the next person to join is not handed a colour somebody is already
+wearing (asserted as four distinct values, not only as a list), and that the
+television's colours equal `personColor(index)` over the same snapshot — which
+is literally what the phone computes.
+
+**The evidence.** Run against the container, with real Socket.IO clients and
+the real page:
+
+```
+four seated, TV:   Ana→1  Bia→2  Caio→3  Duda→4
+Bia leaves, TV:    Ana→1  Caio→2  Duda→3
+Eva joins,  TV:    Ana→1  Caio→2  Duda→3  Eva→4
+distinct colours:  4 of 4
+```
+
+And with a real phone page in the same room, at 390×844, joining third and then
+watching the first person leave: the television read `--m8-person-3` and the
+phone's computed `--m8-person` was `#c6f24e`; after the departure the television
+read `--m8-person-2` and the phone read `#2bd9e4`. The two screens agree, before
+and after.
+
+## A departure no longer replays the arrival animation
+
+**What was wrong.** Chips were placed by comparing each against whatever
+occupied its index. When the person at index *i* left, every survivor behind
+them failed that comparison and was `insertBefore`-d — which in Blink is a
+remove and an insert, so each one restarted its CSS animation. The one signal in
+this product, "your phone connected", fired for three people at the moment a
+fourth left.
+
+**What was done.** Two changes in `syncPeople`, and the order of them is the
+fix:
+
+1. **Whoever left is removed first, before anybody is placed.** Placing against
+   a row that still holds a departed chip is what made the survivors look
+   misplaced.
+2. **Each chip is compared against the one that should precede it**, not
+   against its index. An index comparison reads a row mid-rearrangement and
+   disagrees with itself; the previous sibling is the only neighbour already
+   known to be in its final place.
+
+Either alone is insufficient: with the removal left until last, the
+previous-sibling comparison still finds the departed chip in the way.
+
+**The covering test.** jsdom runs no animations, so the test asserts the cause
+rather than the effect: with four people seated and the second leaving,
+`insertBefore` is not called on the row at all, and the three survivors are the
+same three elements as before. A genuine reorder still moves elements, which is
+correct and is still covered by the existing row-order test.
+
+## A guard now reads the emitted stylesheet
+
+**What was wrong.** Nothing did. The syntax guard parses the JavaScript and the
+size guard weighs bytes; the stylesheet — the one artefact on this screen
+containing rules nobody in this repository wrote — was checked by hand, once.
+Tailwind emits `::backdrop`, `::-ms-backdrop`, `.transform` and `.outline` from
+words it found in the source, and its own preflight emits
+`[hidden]:where(:not([hidden=until-found]))`. Preflight is switched off for
+exactly that reason, but that switch was a *comment* in
+`apps/tv/tailwind.config.js`, and a comment does not fail.
+
+**What was done.** `scripts/check-tv-css.mjs`, in the shape of
+`scripts/check-tv-syntax.mjs`: pure logic (`stripCssComments`,
+`findUnsupportedCss`, `assertTvCss`) separated from disk access, a `.d.mts`
+beside it so a TypeScript test can call it, a CLI entrypoint whose target
+directory is overridable so tests can point it at a fixture, and
+`npm run guard:css` wired into `npm run guards` — which is what CI runs.
+
+It rejects 23 constructs, each with the Chromium version it needs: `:is()`,
+`:where()`, `:has()`, `:focus-visible`, `clamp()`, `min()`, `max()`,
+`color-mix()`, `oklch()`, `oklab()`, `lch()`, `lab()`, `aspect-ratio`,
+`backdrop-filter`, `gap`, `row-gap`, `column-gap`, `inset`, `overflow: clip`,
+`@layer`, `@container`, `@property`, and viewport-relative units. The Tailwind
+v4 spellings are there deliberately: v4 needs Chrome 111, and `@layer`,
+`oklch()`, `color-mix()` and `@property` are how it would announce itself if
+`apps/tv` were ever moved onto it by a well-meaning dependency update.
+
+Three things in it are worth reading twice, because each is a false positive
+that was found and fixed rather than imagined:
+
+- **Comments are stripped first.** `apps/tv/src/styles.css` explains at length,
+  in prose, that it uses no `clamp()`, no `:where()`, no `aspect-ratio` and no
+  `gap`. A guard reading an unminified stylesheet would fail the build on the
+  paragraph explaining why the build should pass.
+- **A property is matched at the start of a declaration**, after `{` or `;`,
+  never merely "preceded by whitespace". `--m8-safe-inset`, `--m8-piece-gap`,
+  `--m8-chip-gap`, `--m8-row-gap` and `--tw-ring-inset` are all real custom
+  property *names* in the emitted stylesheet, and every one of them ends in the
+  spelling of a banned property. A looser guard fails on the names invented to
+  avoid the properties.
+- **A function is matched only where it is a function.** `minmax(` is not
+  `max(`. And a functional pseudo-class is anchored by its own colon, because
+  the character before `:is(` in `.a:is(.b)` belongs to the selector.
+
+**The covering tests.** `scripts/check-tv-css.test.ts`: one rejection case per
+construct, nine acceptance cases taken verbatim from the stylesheet the
+television is actually sent, the comment-stripping case, the multiple-findings
+case, and four subprocess runs proving the CLI accepts a clean fixture (asserted
+on stdout, not only on exit 0 — a broken Windows entrypoint exits 0 having read
+nothing), rejects a missing directory, rejects a directory with no CSS, and
+rejects the preflight rule. Plus a check of whatever build is on disk, skipped
+when there is none.
+
+`scripts/tv-tailwind-config.test.ts` asserts `corePlugins.preflight === false`
+directly. The CSS guard would catch the emitted selector; this catches the
+decision, which is a better error message.
+
+## Three smaller things, folded in
+
+**Two preflight gaps that were leaning on a browser default.**
+`body { font-family: var(--m8-font-text) }`, which the phone already had, and
+`*, ::before, ::after { border: 0 solid }`. Neither changed anything visible
+today, which is exactly what made them worth writing down: with preflight off,
+anything added without a `font-family` inherits the browser's default serif on a
+screen that has no serif in it, and `border-width: 3px` alone draws nothing,
+because the initial `border-style` is `none`.
+
+**The display face is `[A-Z0-9 ]`, not merely "uppercase".** The subset has no
+hyphen, no full stop and no apostrophe. The comment in `apps/tv/src/render.ts`
+said "uppercase Latin and digits", which reads as permissive about punctuation
+that is not in the file. The five strings are now one exported object,
+`DISPLAY_FACE_STRINGS`, with the pattern beside them, and `render.test.ts`
+asserts every member matches — plus, guarding the guard from the other side,
+that `TIC-TAC-TOE` and `Reconnecting` do *not*. This is about to matter rather
+than being theoretical: the first game is tic-tac-toe, and an eyebrow reading
+`TIC-TAC-TOE` would drop two hyphens into a fallback face and say nothing about
+it. A further test renders all three screens and finds each string on the one
+that draws it, so the set stays the whole set.
+
+**The Tailwind content glob no longer scans the tests.** Tailwind finds
+candidate class names in raw text and cannot tell a class from any other word:
+`p-1`, `p-2` and `p-3` are participant ids in `render.test.ts`, and `contents`
+and `lowercase` came out of prose in the tests. All of them shipped to the
+television as real rules — bytes off the budget, and selectors on the new
+guard's surface, for classes nothing renders. `'!./src/**/*.test.ts'` removes
+`.p-1`, `.p-2`, `.p-3`, `.lowercase` and `.filter` (and with `.filter` gone, the
+`::backdrop` and `::-ms-backdrop` variable blocks it dragged in).
+`scripts/tv-tailwind-config.test.ts` resolves the patterns with `fast-glob` —
+the same library Tailwind resolves them with, now a declared root
+devDependency rather than a borrowed transitive one — and asserts that
+`src/render.ts` is scanned, that no `.test.ts` is, and that there are test files
+there to be excluded in the first place.
+
+## The numbers
+
+|  | Before this pass | After |
+|---|---|---|
+| Tests | 374 in 30 files | **475 in 33 files** |
+| Guards | 2 | **3** |
+| Ceiling | 42,000 B | **42,000 B — unchanged** |
+| Measured | 37,990 B | **38,165 B** |
+| Headroom | 4,010 B | 3,835 B |
+
+The 175 bytes are the stylesheet growing by 50 B gzipped (the cap, the text
+column, the relaxed caps, the two reset rules, less what excluding the tests
+removed) and the bundle by 125 B gzipped (`DISPLAY_FACE_STRINGS`, the
+`data-abreast` attribute, and the reordered `syncPeople`). The ceiling did not
+move.
+
+## Verified
+
+- `npm test` — **475 passed, 33 files**, through PowerShell. (Under the
+  sandboxed Bash tool every vitest worker still dies and reports zero tests: a
+  known environment defect, not a suite failure. Every figure here comes from
+  PowerShell.)
+- `npm run typecheck` — clean across all three projects.
+- `npm run guards` — ES2017 syntax check passed; **Chromium 68 CSS check
+  passed**; size 38,165 B against 42,000 B.
+- `docker compose up --build -d` — built and running, serving the large screen.
+- The container driven with headless Chromium and real Socket.IO clients: the
+  32-case layout sweep described above, the four-person departure sequence, and
+  a real phone page at 390×844 confirming both screens name the same colour
+  before and after a departure.
+
+## Not verified, and still open
+
+- **Still nothing has been on a real television.** Everything above was
+  measured in Chromium on a PC. `docs/tv-smoke-test.md` steps 10 to 13 remain
+  unrun.
+- **The CSS guard is a text scan, not a parse.** That is the right trade for
+  catching a construct arriving from a dependency, and the three helpers above
+  are where its false positives were fixed — but a selector spelled unusually
+  by a future minifier could slip past it. It is a floor, not a proof.
+- **The safe-area test models boxes, not glyphs.** It cannot know how wide a
+  word is. The layout was made content-independent so that it does not have to,
+  and the one place a glyph width still matters — whether `RECONNECTING` fits
+  its column — is checked in a browser and recorded here, not in CI.
+- **`prefers-reduced-motion` still does nothing on the oldest supported sets**,
+  and **nicknames outside Latin-1** still fall back to a system font. Both are
+  properties of the target, unchanged.
+- **The baton still has no visual mark.** Unchanged, and still waiting for the
+  first game.
+- **Colour contrast is still judged by eye**, not measured against a ratio.
+- **The size guard is still blind to a future image asset**, the
+  table-stays-square test still cannot see a real transform under jsdom, and the
+  historical plan document still names the old budget key. All three were
+  carried deliberately and are not touched here.
