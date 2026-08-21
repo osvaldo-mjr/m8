@@ -305,8 +305,13 @@ not the arithmetic: start enabled, or "one more player".
 
 ### 6.4 Once the match starts, entry closes
 
-Even with seats still empty, nobody else may join. This is not a policy choice
-— it falls out of the contract. The game is handed the occupied seats and
+Even with seats still empty, nobody else may join. Note that this situation
+only arises for a game whose minimum is below its maximum: starting requires
+the minimum to be seated (§6.3), so tic-tac-toe, whose minimum and maximum are
+both two, can never begin with an empty chair. A game seating two to four can
+start with three, and the fourth place stays closed for the rest of the match.
+
+This is not a policy choice — it falls out of the contract. The game is handed the occupied seats and
 builds its initial state from them; admitting a fourth player later would mean
 altering that state from outside, which pure functions over a serializable
 value do not permit.
