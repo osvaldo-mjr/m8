@@ -145,6 +145,32 @@ redesigning the platform.
 
 ## Results
 
+### 2026-08-21 — Samsung (model and year still pending) — PASSED, with one observation
+
+The room round on real hardware: floor, wooden table, lamp pool and directional
+shadows. The owner validated it.
+
+**Observed, not fixed:** on some sets the table looks more stretched than on
+others — noticeable, not bad enough to act on yet.
+
+The likely cause is worth writing down before somebody rediscovers it. The
+table has no locked proportion: it is a flex child whose width comes from the
+stage and whose height comes from its content and the space left over, so its
+aspect follows the viewport. `aspect-ratio` would pin it declaratively and is
+**Chromium 88** — above the floor this project targets, so the one obvious tool
+is unavailable. The workaround is the percentage-padding trick, which fights
+the column flex layout the safe-area model is built on, so it is not a small
+change.
+
+Two things to establish before anyone attempts it: whether the stretch tracks
+the *panel* (a set running its browser at a non-16:9 internal resolution and
+scaling up) or the *viewport* (the layout genuinely getting a different aspect
+and the table following it). They need different fixes, and only a second set
+tells them apart. Record the model, the reported viewport size, and a
+photograph next time.
+
+
+
 Record every run here, passed or failed. An unrecorded pass is a risk nobody
 can prove was retired.
 
