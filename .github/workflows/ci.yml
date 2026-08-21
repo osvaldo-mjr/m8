@@ -38,3 +38,29 @@ jobs:
       # installed, which is the only place that promise can be verified.
       - name: Build the image
         run: docker build -t m8:ci .
+
+      # Building is not running. The server starts through `tsx`, which is a
+      # dependency of apps/server that nothing in apps/server imports - so
+      # moving it back to devDependencies looks like a correct tidy-up, and
+      # npm ci, the typecheck, the whole suite, both guards and the image
+      # build above would all stay green while the container died at start
+      # with `Cannot find package 'tsx'`. This step is what notices.
+      - name: Run the image and prove it serves
+        run: |
+          docker run -d --name m8-ci -p 3000:3000 -e HOST=0.0.0.0 -e PORT=3000 m8:ci
+          served=""
+          for _ in $(seq 1 30); do
+            if curl -fsS -o page.html http://127.0.0.1:3000/; then served="yes"; break; fi
+            sleep 1
+          done
+          if [ -z "$served" ]; then
+            echo "The container never served a request. Its logs:"
+            docker logs m8-ci || true
+            docker rm -f m8-ci
+            exit 1
+          fi
+          # Asserting on the body, not only on a 200: what has to be true is
+          # that the large screen was built into the image and is being
+          # served, not merely that something answered the port.
+          grep -q '<title>M8</title>' page.html
+          docker rm -f m8-ci
