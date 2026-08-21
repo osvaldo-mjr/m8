@@ -13,35 +13,124 @@
  *
  * There is deliberately no neutral surface here: no white card, no grey
  * panel. `--m8-paper` is an object placed on the table (the code tiles, the
- * QR), never a background. A warm dark room is not a neutral surface — it is
- * the room, which is the thing the screen is pretending to be.
+ * QR), never a background. A dark room with a lamp over the table is not a
+ * neutral surface — it is the room, which is the thing the screen is
+ * pretending to be.
  *
- * Flat fills only. No gradient tokens: televisions apply their own colour
- * processing and gradients band badly on them. The one exception is the
- * shadow below, which is not a fill.
+ * The picture is a room seen from directly above: a tiled floor, a wooden
+ * table on it, and one lamp above the middle of the table. That is why there
+ * are three board tones and a seam rather than one tabletop colour, and why
+ * the light is three flat steps rather than a fade — see the note on
+ * `--m8-lamp-1` below, which is the one thing in this file worth reading
+ * twice.
  */
 :root {
-  /** The room behind the table: a warm near-black, a room at night. */
+  /**
+   * The face of one floor tile: a warm near-black, a room away from the lamp.
+   *
+   * This value is load bearing beyond the floor. Every one of the eight
+   * person colours is measured against it — the chips sit on the floor, and
+   * the whole design rests on being able to tell who is which colour from
+   * three metres — so it is the one colour here that cannot be lightened
+   * without recomputing all eight.
+   */
   --m8-ground: #1c1614;
-  /** The lit surface things are laid out on: a painted terracotta tabletop. */
-  --m8-table: #b44a32;
+  /**
+   * The joint between two floor tiles, and it is *darker* than the tile
+   * rather than lighter. That is not a taste: a lighter grout would be the
+   * brightest thing under a chip, and the person colours are measured against
+   * whatever is brightest beneath them. Darker, it can only ever improve
+   * them — and a groove in shadow is what a floor seen from above in a dim
+   * room actually looks like.
+   */
+  --m8-floor-seam: #0d0908;
+
+  /**
+   * The lamp above the table, in three flat steps, brightest first.
+   *
+   * Three tokens rather than one with three alphas because CSS has no way to
+   * restate an existing colour at a different alpha that this screen may use:
+   * `color-mix()` and relative colour syntax are both Chromium 111 against a
+   * floor of 68. So each step is written once, here, and nowhere else.
+   *
+   * **Steps, not a fade, and that is the whole point.** Televisions apply
+   * their own contrast processing and a smooth gradient is exactly what it
+   * ruins: a soft falloff comes back as a stack of visible stripes. Banding
+   * is what happens when a *ramp* is quantised, so a light that has no ramp
+   * anywhere in it has nothing left to quantise. Every stop below is a hard
+   * stop — two stops at the same position — so the pool is flat regions
+   * separated by edges the design drew on purpose, and it reads as stylised
+   * lighting rather than as a defect.
+   *
+   * Two steps rather than more, because there is very little floor to put
+   * them on: the table spans the whole safe width, so the floor is a band
+   * above it, two strips in the overscan margin, and the area below where
+   * the people stand. A step boundary anywhere in that lower area cuts
+   * across the row of people and reads as a stain, so the pool is sized to
+   * put its one visible boundary hugging the table — which is where light
+   * spilling off a lit surface belongs — and to run past the bottom of the
+   * screen everywhere else.
+   */
+  --m8-lamp-1: rgba(255, 217, 168, 0.16);
+  --m8-lamp-2: rgba(255, 217, 168, 0.06);
+
+  /**
+   * The tabletop, in boards. The middle tone is `--m8-table` because that is
+   * the name both Tailwind configurations already read, and because a screen
+   * that somehow drew the table without its board pattern should still get a
+   * tabletop rather than nothing.
+   *
+   * Three tones and a seam, all flat. At three metres what makes wood read as
+   * wood is the joint between two boards and the tone changing across it;
+   * fine grain becomes noise at that distance and would cost an image the
+   * bundle cannot afford.
+   *
+   * The light tone is the brightest surface any text on this screen sits on,
+   * which is what caps it: paper on it is 4.60:1, and the error code line is
+   * 18px, so it is the one piece of small text in the product and 4.5:1 is
+   * the threshold it has to clear.
+   */
+  --m8-plank-light: #9b6437;
+  --m8-table: #945f35;
+  --m8-plank-dark: #8d5b32;
+  /** The joint between two boards: a shadowed groove, not a drawn line. */
+  --m8-plank-seam: #4a2e15;
+
+  /**
+   * How the tabletop falls away from the lamp, in two flat steps. Same
+   * argument as `--m8-lamp-1`: hard stops, nothing to band.
+   */
+  --m8-table-shade-1: rgba(30, 12, 4, 0.07);
+  --m8-table-shade-2: rgba(30, 12, 4, 0.15);
+
   /**
    * The front face of that tabletop — the band along its lower edge that
-   * gives it thickness. Darker than the surface and lighter than the room, so
-   * it reads as the same piece of furniture seen edge-on rather than as a
+   * gives it thickness. Darker than the darkest lit part of the surface and
+   * lighter than the floor, so the lighting stack descends the whole way down
+   * and it reads as the same piece of furniture seen edge-on rather than as a
    * shadow or as a hole in the picture.
    */
-  --m8-table-edge: #7a2e1d;
+  --m8-table-edge: #553519;
   /** Pieces and the QR only. Never a panel. */
   --m8-paper: #fff6ec;
-  /** Characters printed on a piece: the ground colour, on paper. */
+  /** Characters printed on a piece: the floor colour, on paper. */
   --m8-ink: var(--m8-ground);
   /**
    * What a piece casts on the table under it. Warm rather than neutral,
-   * because a grey shadow on terracotta reads as dirt; and translucent
-   * rather than a solid, so the surface stays one colour beneath it.
+   * because a grey shadow on wood reads as dirt; and translucent rather than
+   * a solid, so the boards stay visible beneath it.
    */
   --m8-shadow: rgba(45, 18, 10, 0.45);
+  /**
+   * The one headline that has to say "this is wrong".
+   *
+   * It used to be `--m8-person-1`, which was never measured: coral on the old
+   * terracotta was 1.73:1 and on the new tabletop would have been 1.38:1, for
+   * a headline. A pale warm red clears 3:1 on the brightest board — the
+   * threshold for text this size — and still reads as an alarm rather than as
+   * paper beside it.
+   */
+  --m8-alarm: #ffbfad;
 
   --m8-person-1: #ff5b4a;
   --m8-person-2: #2bd9e4;

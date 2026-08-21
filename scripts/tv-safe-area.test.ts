@@ -8,9 +8,12 @@ import {
   overscanPixels,
   peopleHeight,
   rowExtent,
+  peopleTopEdge,
+  radialStopEdge,
   rowsNeeded,
   safeArea,
   scatteredExtent,
+  shadowReach,
   stageHeight,
   surfaceContentHeight,
   surfaceHeight,
@@ -93,6 +96,46 @@ describe('a row of pieces on the table', () => {
   })
 })
 
+describe('the shadow a piece throws', () => {
+  it('reaches its own offset plus half its blur', () => {
+    // Downwards that offset is `--m8-shadow-lift` plus whatever the lamp adds
+    // for a piece that sits off the row's centre line; sideways there is no
+    // constant, only what the lamp adds.
+    expect(shadowReach(5, 1, 3, 14)).toBe(15)
+    expect(shadowReach(0, 4, 3, 14)).toBe(19)
+  })
+
+  it('reaches further the further the piece is from the lamp', () => {
+    // The whole point of the directional shadow: a piece at the end of the
+    // row throws further than one near the middle, so the model has to charge
+    // the end of the row rather than an average.
+    expect(shadowReach(0, 4, 3, 14)).toBeGreaterThan(shadowReach(0, 1, 3, 14))
+    // With no steps it collapses to the straight-down shadow the stylesheet
+    // declares, which is what a piece that never reaches the renderer gets.
+    expect(shadowReach(5, 0, 3, 14)).toBe(12)
+  })
+})
+
+describe('the lamp above the table', () => {
+  it('puts a stop at the centre plus that fraction of the radius', () => {
+    // A stop position in a radial gradient is a fraction of the ray from the
+    // centre to the ending shape, so a stop at 38% of a 66%-tall ellipse
+    // centred at 40% lands just over a quarter of the screen below it.
+    expect(radialStopEdge(40, 66, 0.38)).toBeCloseTo(65.08)
+    expect(radialStopEdge(40, 66, 1)).toBeCloseTo(106)
+  })
+})
+
+describe('where the row of people begins', () => {
+  it('is measured from the top of the screen, not the top of the safe area', () => {
+    // The floor is drawn on `body`, so the lamp's stops resolve against the
+    // viewport and know nothing about the overscan margin. That is why this
+    // one measurement starts at the screen's own edge.
+    const stage = { eyebrowHeight: 64, tableGap: 44, tableMinHeight: 461, peopleHeight: 280 }
+    expect(peopleTopEdge(stage, 96, 500, 44)).toBe(748)
+  })
+})
+
 describe('the stage', () => {
   const stage = {
     eyebrowHeight: 64,
@@ -171,6 +214,23 @@ describe('the screen at every number of people the table holds', () => {
   }
 
   /**
+   * WCAG relative luminance of a `#rrggbb` value, which is what the lighting
+   * stack below is ordered by. Computed here rather than eyeballed: a test
+   * that ordered the palette by eye would be no better than the eye that
+   * produced the palette.
+   */
+  function luminance(value: string): number {
+    const digits = /^#([0-9a-f]{6})$/i.exec(value.trim())
+    if (digits === null || digits[1] === undefined) throw new Error(`Not a hex colour: ${value}`)
+    const hex = digits[1]
+    const channels = [0, 2, 4].map((at) => {
+      const channel = Number.parseInt(hex.slice(at, at + 2), 16) / 255
+      return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)
+    })
+    return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0)
+  }
+
+  /**
    * The percentage a cap is written against, whether the declaration is a
    * bare `25%` or, as `.m8-chip`'s is, `calc(25% - 1px)` — the 1px is a
    * sub-pixel-rounding safety margin invisible to this model, which reasons
@@ -190,6 +250,28 @@ describe('the screen at every number of people the table holds', () => {
   const roots = styles.split(':root').slice(1)
   const [base, large] = [roots[0] ?? '', roots[1] ?? '']
 
+  /**
+   * The lamp on the floor, as numbers.
+   *
+   * Read out of the stylesheet rather than restated, the same way every other
+   * size in this file is: the gradient is where the light's shape actually
+   * lives, and the assertion that depends on it is a contrast guarantee.
+   */
+  const floorRule = /(?:^|[\n}])\s*body\s*\{([^}]*background-image[^}]*)\}/.exec(styles)
+  if (floorRule === null || floorRule[1] === undefined) throw new Error('No floor on body')
+  const floorImage = declaration(floorRule[1], 'background-image')
+  const ellipse = /ellipse\s+([\d.]+)%\s+([\d.]+)%\s+at\s+([\d.]+)%\s+([\d.]+)%/.exec(floorImage)
+  if (ellipse === null) throw new Error(`No lamp ellipse in ${floorImage}`)
+  // The position of the first stop drawn in the dimmer tint is where the
+  // bright step ends.
+  const innerStop = /var\(--m8-lamp-2\)\s+([\d.]+)%/.exec(floorImage)
+  if (innerStop === null || innerStop[1] === undefined) throw new Error('No step between the two tints')
+  const lamp = {
+    radiusY: Number.parseFloat(ellipse[2] ?? ''),
+    centreY: Number.parseFloat(ellipse[4] ?? ''),
+    innerStop: Number.parseFloat(innerStop[1]),
+  }
+
   const chipRule = rule(styles, '.m8-chip')
   const chipCapPercent = percent(chipRule, 'max-width')
   const perRow = chipsPerRow(chipCapPercent)
@@ -208,11 +290,13 @@ describe('the screen at every number of people the table holds', () => {
   const maxTiltDegrees = 8
   const maxLiftSteps = 3
   const maxSpaceSteps = 3
+  const maxShadowSteps = 4
   it.each([
     ['TILT_MIN_DEGREES', minTiltDegrees],
     ['TILT_MAX_DEGREES', maxTiltDegrees],
     ['MAX_LIFT_STEPS', maxLiftSteps],
     ['MAX_SPACE_STEPS', maxSpaceSteps],
+    ['MAX_SHADOW_STEPS', maxShadowSteps],
   ])('agrees with the tilt module about %s', (name, value) => {
     expect(tilt).toContain(`${name} = ${value}`)
   })
@@ -254,8 +338,15 @@ describe('the screen at every number of people the table holds', () => {
     // on this screen, which is what keeps the lowest tile's shadow off it.
     const addressGap = pixels(sizes, '--m8-row-gap') + scatterStep * 2
     // A box shadow's blur spreads about half its radius past the shadow's own
-    // edge, so this is how far below a piece the shadow actually reaches.
-    const shadowReach = pixels(sizes, '--m8-shadow-lift') + pixels(sizes, '--m8-shadow-blur') / 2
+    // edge. Downwards a piece is offset by `--m8-shadow-lift` and by one step
+    // in whichever direction its own lift took it; sideways it is offset by
+    // up to `MAX_SHADOW_STEPS`, which is what the piece at the end of the row
+    // gets. Both are charged, because the lamp made the shadow a claim on two
+    // axes rather than one.
+    const shadowStep = pixels(sizes, '--m8-shadow-step')
+    const shadowBlur = pixels(sizes, '--m8-shadow-blur')
+    const shadowDown = shadowReach(pixels(sizes, '--m8-shadow-lift'), 1, shadowStep, shadowBlur)
+    const shadowAcross = shadowReach(0, maxShadowSteps, shadowStep, shadowBlur)
 
     /** The QR, turned and lifted as far as the scatter can take it. */
     function qrNeeds(degrees: number): number {
@@ -319,10 +410,14 @@ describe('the screen at every number of people the table holds', () => {
       // are the code block and the QR with the block margin between them.
       // Every gap at its widest and every piece at its most turned.
       const tiles = [tileSize, tileSize, tileSize, tileSize]
+      // Plus the shadow the piece at each end throws outwards, which is the
+      // one thing here that reaches past the box that casts it. The leftmost
+      // tile throws left and the QR throws right, both at the full step count.
       const across =
         rowExtent(tiles, [widestGap, widestGap, widestGap], degrees) +
         pixels(sizes, '--m8-block-gap') +
-        tiltedExtent(qrOuter, degrees)
+        tiltedExtent(qrOuter, degrees) +
+        shadowAcross * 2
       expect(across).toBeLessThanOrEqual(safe.width)
     })
 
@@ -340,7 +435,7 @@ describe('the screen at every number of people the table holds', () => {
       // If the three together exceeded the gap, the code would sit on the
       // address — which is why that gap is two scatter steps wider than the
       // others rather than sharing `--m8-row-gap` with everything else.
-      const reach = tileLift + tiltOverhang(tileSize, maxTiltDegrees) + shadowReach
+      const reach = tileLift + tiltOverhang(tileSize, maxTiltDegrees) + shadowDown
       expect(reach).toBeLessThan(addressGap)
     })
 
@@ -348,7 +443,29 @@ describe('the screen at every number of people the table holds', () => {
       // A shadow that fell past the lower edge would be cast on the room, and
       // the whole point of it is that the piece is resting on something.
       const room = surfaceContentHeight(tableHeight(stageFor(MAX_PARTICIPANTS), safe.height), edgeHeight)
-      expect((room - qrNeeds(maxTiltDegrees)) / 2).toBeGreaterThanOrEqual(shadowReach)
+      expect((room - qrNeeds(maxTiltDegrees)) / 2).toBeGreaterThanOrEqual(shadowDown)
+    })
+
+    it('stops the bright step of the lamp above the row of people', () => {
+      // This is a contrast constraint expressed as geometry, and it is the
+      // one claim in this round that a picture cannot check for you.
+      //
+      // The eight person colours are measured against whatever is brightest
+      // under a chip. On the outer step of the light pool the worst of the
+      // eight is 4.90:1; on the inner step it is 3.71:1, and three of the
+      // eight fall under 4.5:1. So "the bright step stops before the people
+      // do" is what makes the palette hold — and it is a percentage inside a
+      // gradient, which nothing else in this repository would notice
+      // changing.
+      //
+      // The worst case is a full table: eight people take two lines, the
+      // table above is squeezed to its smallest, and the row starts higher up
+      // the screen than at any other count.
+      const stage = stageFor(MAX_PARTICIPANTS)
+      const rowGap = pixels(sizes, '--m8-row-gap')
+      const top = peopleTopEdge(stage, screen.width * insetRatio, tableHeight(stage, safe.height), rowGap)
+      const edge = radialStopEdge(lamp.centreY, lamp.radiusY, lamp.innerStop / 100)
+      expect((edge / 100) * screen.height).toBeLessThan(top)
     })
 
     it('keeps the chip as tall as its disc even when somebody has dropped', () => {
@@ -454,6 +571,14 @@ describe('the screen at every number of people the table holds', () => {
       expect(declaration(rule(styles, '.m8-address'), 'white-space')).toBe('nowrap')
     })
 
+    it.each(['1280x720', '1920x1080'])('declares a shadow step at %s', (name) => {
+      // The lamp's sideways term. Both tiers must declare it, or one
+      // resolution silently loses the direction and every shadow falls
+      // straight down again — which is the arrangement this round replaced.
+      const sizes = name === '1920x1080' ? large : base
+      expect(pixels(sizes, '--m8-shadow-step')).toBeGreaterThan(0)
+    })
+
     it.each(['.m8-tile', '.m8-qr'])('drops a shadow under %s', (selector) => {
       // The tilt without a shadow reads as a layout mistake; with one it
       // reads as an object put down on a surface. Both pieces carry it, and
@@ -468,6 +593,172 @@ describe('the screen at every number of people the table holds', () => {
       expect(declaration(body, 'overflow')).toBe('hidden')
       expect(declaration(body, 'text-overflow')).toBe('ellipsis')
       expect(declaration(body, 'white-space')).toBe('nowrap')
+    })
+  })
+
+  /**
+   * The room, and the one claim it rests on.
+   *
+   * The floor and the tabletop are gradients rather than images, and the
+   * argument for that is that a television ruins a smooth gradient: its own
+   * contrast processing turns a soft falloff into a stack of visible stripes.
+   * Banding is a *ramp* being quantised, so the answer is to have no ramp —
+   * every colour is written twice, at the same position, and what is left is
+   * flat regions separated by edges the design drew deliberately.
+   *
+   * That argument is only as good as the stylesheet, and one stop written at
+   * the wrong position turns a step into a ramp with nothing in the diff to
+   * see. So it is checked rather than asserted: every gradient in the
+   * stylesheet is parsed, and any two consecutive stops of different colours
+   * must sit at the same position.
+   */
+  describe('the room the screen draws', () => {
+    /** Split a comma-separated CSS list, ignoring commas inside brackets. */
+    function parts(list: string): string[] {
+      const found: string[] = []
+      let depth = 0
+      let current = ''
+      for (const character of list) {
+        if (character === '(') depth += 1
+        if (character === ')') depth -= 1
+        if (character === ',' && depth === 0) {
+          found.push(current.trim())
+          current = ''
+          continue
+        }
+        current += character
+      }
+      found.push(current.trim())
+      return found.filter((piece) => piece !== '')
+    }
+
+    /** Every gradient in a `background-image`, as its argument list. */
+    function gradients(value: string): string[] {
+      const found: string[] = []
+      const pattern = /(?:repeating-)?(?:linear|radial)-gradient\(/g
+      let match = pattern.exec(value)
+      while (match !== null) {
+        let depth = 1
+        let index = match.index + match[0].length
+        const start = index
+        while (index < value.length && depth > 0) {
+          if (value.charAt(index) === '(') depth += 1
+          if (value.charAt(index) === ')') depth -= 1
+          index += 1
+        }
+        found.push(value.slice(start, index - 1))
+        pattern.lastIndex = index
+        match = pattern.exec(value)
+      }
+      return found
+    }
+
+    /**
+     * The colour stops of one gradient. The first argument of a gradient is
+     * its shape or its direction, never a colour, so anything that does not
+     * begin with a colour is dropped rather than parsed.
+     */
+    function colorStops(argumentList: string): { color: string; position: string }[] {
+      const stops: { color: string; position: string }[] = []
+      for (const piece of parts(argumentList)) {
+        if (!/^(?:var\(|transparent\b|rgba?\(|#)/.test(piece)) continue
+        const split = /^(var\([^)]*\)|transparent|rgba?\([^)]*\)|#[0-9a-f]{3,8})\s*(.*)$/i.exec(piece)
+        if (split === null || split[1] === undefined || split[2] === undefined) {
+          throw new Error(`Unparsed colour stop: ${piece}`)
+        }
+        stops.push({ color: split[1], position: split[2].trim() })
+      }
+      return stops
+    }
+
+    /** Every gradient the stylesheet declares, with where it was found. */
+    const declared: { where: string; stops: { color: string; position: string }[] }[] = []
+    for (const match of styles.matchAll(/(?:^|[;{])\s*background-image\s*:\s*([^;]+)/g)) {
+      const value = match[1]
+      if (value === undefined) continue
+      for (const argumentList of gradients(value)) {
+        declared.push({ where: value.slice(0, 40), stops: colorStops(argumentList) })
+      }
+    }
+
+    it('draws the floor and the tabletop with gradients rather than images', () => {
+      // Five: the lamp on the floor, the two sets of floor-tile joints, the
+      // lamp on the table, and the boards. If this ever fell to zero the
+      // assertion below would pass vacuously.
+      expect(declared.length).toBe(5)
+      expect(styles).not.toContain('url(')
+    })
+
+    it('gives every gradient stop a partner at the same position, so nothing can band', () => {
+      for (const gradient of declared) {
+        expect(gradient.stops.length).toBeGreaterThan(1)
+        for (let index = 1; index < gradient.stops.length; index += 1) {
+          const before = gradient.stops[index - 1]
+          const after = gradient.stops[index]
+          if (before === undefined || after === undefined) continue
+          if (before.color === after.color) continue
+          // Compared as strings so a failure names the pair that ramps.
+          expect(`${before.color} ${before.position} -> ${after.color} ${after.position}`).toBe(
+            `${before.color} ${before.position} -> ${after.color} ${before.position}`,
+          )
+        }
+      }
+    })
+
+    it('lights the room from above the table rather than everywhere', () => {
+      // A lamp over a table lights the table, not the room — which is also
+      // what keeps the floor under the chips dark enough for eight saturated
+      // colours to be told apart on it.
+      const floor = /(?:^|[\n}])\s*body\s*\{([^}]*background-image[^}]*)\}/.exec(styles)
+      expect(floor).not.toBeNull()
+      const body = floor === null || floor[1] === undefined ? '' : floor[1]
+      const image = declaration(body, 'background-image')
+      expect(image).toContain('var(--m8-lamp-1)')
+      expect(image).toContain('var(--m8-lamp-2)')
+      expect(image).toContain('var(--m8-floor-seam)')
+      expect(declaration(body, 'background-color')).toBe('var(--m8-ground)')
+    })
+
+    it('keeps the floor seam darker than the floor, so a chip never sits on a lighter one', () => {
+      // The eight person colours are measured against whatever is brightest
+      // under a chip. A lighter grout would become that and would cost every
+      // one of them contrast; darker, it can only give contrast back.
+      const root = rule(tokens, ':root')
+      expect(luminance(declaration(root, '--m8-floor-seam'))).toBeLessThan(
+        luminance(declaration(root, '--m8-ground')),
+      )
+    })
+
+    it('descends from the lit board to the shaded board to the edge to the floor', () => {
+      // A lit slab in a dark room, as a lighting stack. If the edge band were
+      // ever darker than the floor it would read as a hole in the picture
+      // rather than as the front face of a tabletop.
+      const root = rule(tokens, ':root')
+      const board = luminance(declaration(root, '--m8-plank-light'))
+      const dark = luminance(declaration(root, '--m8-plank-dark'))
+      const edge = luminance(declaration(root, '--m8-table-edge'))
+      const floor = luminance(declaration(root, '--m8-ground'))
+      expect(board).toBeGreaterThan(dark)
+      expect(dark).toBeGreaterThan(edge)
+      expect(edge).toBeGreaterThan(floor)
+    })
+
+    it('builds the tabletop out of boards with a joint between them', () => {
+      const body = rule(styles, '.m8-table')
+      const image = declaration(body, 'background-image')
+      for (const token of [
+        'var(--m8-plank-light)',
+        'var(--m8-table)',
+        'var(--m8-plank-dark)',
+        'var(--m8-plank-seam)',
+        'var(--m8-table-shade-1)',
+        'var(--m8-table-shade-2)',
+      ]) {
+        expect(image).toContain(token)
+      }
+      // The boards run left to right, which is why the joints are horizontal
+      // and the gradient's axis is vertical.
+      expect(image).toContain('to bottom')
     })
   })
 })

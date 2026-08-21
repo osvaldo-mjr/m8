@@ -23,13 +23,13 @@ large screen shows a table code and a QR code, and a phone that scans it joins
 and appears on the screen with a name and an avatar. That is the whole slice —
 no seats, no turns, no rules.
 
-575 tests cover it: pure domain logic, a table state machine driven by a fake
+601 tests cover it: pure domain logic, a table state machine driven by a fake
 transport, integration tests proving the real Socket.IO transport honours the
 same contract, and a set of guards over the build itself. Three of those run on
 every push — one confirms the large-screen bundle compiles to syntax the old
 television targets can execute, one scans the emitted stylesheet and rejects
 CSS newer than those sets can run, and the third holds everything the
-television downloads under a 42,000-byte budget, currently measured at 38,805
+television downloads under a 42,000-byte budget, currently measured at 39,399
 bytes (code and stylesheet gzipped, the two self-hosted font files as they are
 served). The Docker image is built in CI and then started, and a request is
 made against it, so the clone-and-run promise is checked on a machine with

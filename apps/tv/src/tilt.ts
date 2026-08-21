@@ -96,6 +96,24 @@ export const QR_SCATTER_STEP_PROPERTY = '--m8-qr-scatter-step'
 /** The gap a piece has after it before any extra steps are added. */
 export const PIECE_GAP_PROPERTY = '--m8-piece-gap'
 
+/**
+ * The four lengths a shadow is written out of. Named, not written, for the
+ * same reason as the step above: the two screen sizes live in the stylesheet.
+ */
+export const SHADOW_STEP_PROPERTY = '--m8-shadow-step'
+export const SHADOW_LIFT_PROPERTY = '--m8-shadow-lift'
+export const SHADOW_BLUR_PROPERTY = '--m8-shadow-blur'
+export const SHADOW_COLOR_PROPERTY = '--m8-shadow'
+
+/**
+ * How far sideways the furthest piece's shadow is thrown, in steps of
+ * `--m8-shadow-step`. Charged against the safe area in
+ * `scripts/tv-safe-area.ts`: a shadow is the one thing on this screen that
+ * reaches past the box it belongs to, and the QR's reaches towards the edge
+ * of the table.
+ */
+export const MAX_SHADOW_STEPS = 4
+
 /** Where one piece lies, in units the stylesheet turns into lengths. */
 export interface PiecePlacement {
   /** Degrees, negative or positive, never zero. */
@@ -330,4 +348,63 @@ export function pieceTransform(placement: PiecePlacement, stepProperty: string):
 /** The gap after one piece, as a CSS length for `margin-right`. */
 export function pieceSpacing(placement: PiecePlacement, stepProperty: string): string {
   return `calc(var(${PIECE_GAP_PROPERTY}) + var(${stepProperty}) * ${placement.spaceSteps})`
+}
+
+/**
+ * Which way one piece throws its shadow, in steps.
+ *
+ * There is one lamp in this picture and it is above the middle of the table,
+ * so a shadow does not fall straight down: it falls *away from the centre*,
+ * each piece in its own direction, by how far off-centre that piece is. That
+ * is deterministic geometry rather than art, it costs one inline declaration
+ * per piece, and it is what the eye reads as a real place without being able
+ * to say why. Every piece throwing its shadow the same way is what tells the
+ * eye these are boxes in a layout.
+ *
+ * `across` is the piece's horizontal position in the row, scaled to the step
+ * range: the leftmost throws fully left, the rightmost fully right, and a
+ * piece in the middle throws none. It is derived from the index rather than
+ * from pixel positions, and the approximation is deliberate — the lengths on
+ * this screen live in the stylesheet and this module cannot see them. What
+ * the eye reads is the ordering and the sign, and those are exact.
+ *
+ * `down` is one step, in the direction the piece's own lift took it, on top
+ * of the constant `--m8-shadow-lift` every piece has. It is small next to
+ * `across` because the pieces are small next to the table vertically: a lift
+ * moves a piece three steps off a centre line that is most of the table's
+ * height away from its edge, where a piece at the end of the row is all the
+ * way out. A radial direction that ignored that would be wrong in the
+ * opposite way from one that ignored the sideways term.
+ *
+ * The shadow is drawn on the piece, so it turns with the piece — up to eight
+ * degrees away from the direction computed here. At this blur and these
+ * offsets that is not visible, and the alternative is a second element under
+ * every tile on a screen whose weight is the point.
+ */
+export function shadowSteps(pieceIndex: number, pieceCount: number, liftSteps: number): {
+  readonly across: number
+  readonly down: number
+} {
+  const span = pieceCount - 1
+  // A single piece is the middle of its own row and throws nothing sideways.
+  const fromCentre = span <= 0 ? 0 : (pieceIndex * 2) / span - 1
+  const magnitude = Math.round(Math.abs(fromCentre) * MAX_SHADOW_STEPS)
+  const across = fromCentre < 0 ? -magnitude : magnitude
+  const down = liftSteps === 0 ? 0 : liftSteps < 0 ? -1 : 1
+  return { across: across, down: down }
+}
+
+/**
+ * One placement as a CSS `box-shadow`, ready for an element's inline style.
+ *
+ * The stylesheet declares a straight-down shadow on `.m8-tile` and `.m8-qr`
+ * as the floor; this overrides it with the direction the lamp implies. A
+ * piece that never reaches the renderer therefore still rests on the table
+ * rather than floating.
+ */
+export function pieceShadow(placement: PiecePlacement, pieceIndex: number, pieceCount: number): string {
+  const steps = shadowSteps(pieceIndex, pieceCount, placement.liftSteps)
+  const across = `calc(var(${SHADOW_STEP_PROPERTY}) * ${steps.across})`
+  const down = `calc(var(${SHADOW_LIFT_PROPERTY}) + var(${SHADOW_STEP_PROPERTY}) * ${steps.down})`
+  return `${across} ${down} var(${SHADOW_BLUR_PROPERTY}) var(${SHADOW_COLOR_PROPERTY})`
 }

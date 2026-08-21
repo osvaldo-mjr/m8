@@ -5,6 +5,7 @@ import {
   QR_SCATTER_STEP_PROPERTY,
   SCATTER_STEP_PROPERTY,
   arrangePieces,
+  pieceShadow,
   pieceSpacing,
   pieceTransform,
 } from './tilt.js'
@@ -130,6 +131,8 @@ function codeTiles(code: string, placements: readonly PiecePlacement[]): HTMLEle
     const tile = element('div', 'm8-tile', code.charAt(index))
     if (placement !== undefined) {
       tile.style.transform = pieceTransform(placement, SCATTER_STEP_PROPERTY)
+      // Away from the middle of the table, because that is where the lamp is.
+      tile.style.boxShadow = pieceShadow(placement, index, PIECE_COUNT)
       // The gap after this tile, which the last one does not have — the
       // stylesheet already zeroes its margin, and an inline style would win
       // over that rule and put a gap between the code and the QR that the
@@ -152,6 +155,10 @@ function qrPiece(placement: PiecePlacement | undefined, code: string): HTMLEleme
     // no baseline for it to break out of. A large lift here would cost the
     // row of people real space and buy nothing anybody can see.
     frame.style.transform = pieceTransform(placement, QR_SCATTER_STEP_PROPERTY)
+    // The piece furthest from the middle of the table, so the one whose
+    // shadow is thrown furthest — and the reason the safe-area model charges
+    // a shadow sideways as well as downwards.
+    frame.style.boxShadow = pieceShadow(placement, QR_PIECE_INDEX, PIECE_COUNT)
   }
 
   const image = document.createElement('img')
@@ -161,7 +168,7 @@ function qrPiece(placement: PiecePlacement | undefined, code: string): HTMLEleme
   return frame
 }
 
-/** The flat terracotta surface everything is laid out on. It is never turned. */
+/** The wooden surface everything is laid out on. It is never turned. */
 function surface(variant: string): HTMLElement {
   return element('div', `m8-table ${variant}`)
 }

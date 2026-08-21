@@ -242,6 +242,15 @@ describe('the code, drawn as four objects', () => {
     return Array.from(target.querySelectorAll('.m8-tile'))
   }
 
+  /** How many steps sideways a piece throws its shadow, as the renderer wrote it. */
+  function shadowAcross(piece: HTMLElement): number {
+    const match = /^calc\(var\(--m8-shadow-step\) \* (-?\d+)\)/.exec(piece.style.boxShadow)
+    if (match === null || match[1] === undefined) {
+      throw new Error(`No sideways shadow: ${piece.style.boxShadow}`)
+    }
+    return Number.parseInt(match[1], 10)
+  }
+
   it('draws one tile per character rather than one string', () => {
     // The alphabet has no O, no I, no zero and no one because every
     // character of a code is read out on its own and typed on its own. Four
@@ -280,6 +289,40 @@ describe('the code, drawn as four objects', () => {
     const qr = root.querySelector('.m8-qr') as HTMLElement
     expect(qr.style.transform).toContain('var(--m8-qr-scatter-step)')
     for (const tile of tiles()) expect(tile.style.transform).toContain('var(--m8-scatter-step)')
+  })
+
+  it('throws every shadow away from the middle of the table', () => {
+    // There is one lamp in this picture and it is above the middle of the
+    // table, so a shadow does not fall straight down: it falls away from the
+    // centre, each piece in its own direction. Every piece throwing the same
+    // way is what tells the eye these are boxes in a layout rather than
+    // objects on a surface — and it is the cue that costs nothing, because it
+    // is geometry rather than art.
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [] })
+    const across = [...tiles(), root.querySelector('.m8-qr') as HTMLElement].map(shadowAcross)
+
+    // Left to right, and never the same twice: the leftmost tile throws
+    // furthest left, the QR furthest right, and the middle of the row throws
+    // nothing sideways at all.
+    expect(across).toEqual([...across].sort((a, b) => a - b))
+    expect(new Set(across).size).toBe(across.length)
+    expect(across[0]).toBeLessThan(0)
+    expect(across[across.length - 1]).toBeGreaterThan(0)
+    // The lamp is over the middle, so the two ends are mirror images.
+    expect(across[0]).toBe(-(across[across.length - 1] ?? 0))
+  })
+
+  it('keeps the downward part of a shadow on the stylesheet lengths', () => {
+    // A shadow is written entirely out of custom properties, like every other
+    // length this module emits: the two screen sizes live in the stylesheet
+    // and nothing here can know which one is in force.
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [] })
+    for (const piece of [...tiles(), root.querySelector('.m8-qr') as HTMLElement]) {
+      expect(piece.style.boxShadow).toContain('var(--m8-shadow-lift)')
+      expect(piece.style.boxShadow).toContain('var(--m8-shadow-blur)')
+      expect(piece.style.boxShadow).toContain('var(--m8-shadow)')
+      expect(piece.style.boxShadow).not.toMatch(/\d+px/)
+    }
   })
 
   it('does not space the tiles evenly', () => {

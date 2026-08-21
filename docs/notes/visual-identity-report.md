@@ -1610,3 +1610,530 @@ every vitest worker and reports zero tests:
 
 Not verified, and still open: everything listed as open above is unchanged,
 plus the three new entries this round added to that list.
+
+---
+
+# The room round — a floor, a wooden table, and one lamp
+
+Written 2026-08-21, after the owner looked at the previous round on a real
+television. At the moment of writing the working tree holds only the changes
+described here, on top of `777404b`, and nothing is pushed. Every figure below
+was measured on this machine on that date: the contrast figures by computing
+WCAG relative luminance over the exact composites the browser produces, the
+byte figures by removing one feature at a time and rebuilding, the layout
+figures in the container in a real headless Chromium driven over the DevTools
+protocol.
+
+The verdict was that the code tiles and the QR now read convincingly as objects
+dropped on a table, and that **the table still does not read as a table** and
+the scene is *muito triste* — too dark, too empty.
+
+Four decisions came with the brief and are implemented as given: a **top-down**
+view rather than a perspective one; wood expressed as **planks with seams and
+board-to-board tone**, not grain; the **lamp's light only**, with no lamp object
+drawn; and the **eight person colours left saturated**, because they are the
+signature and the only thing that says who is who at three metres.
+
+Two decisions were taken from those and shape everything below.
+
+**Do not fight the television's banding — own it.** A set's picture processing
+ruins a smooth gradient: a soft falloff comes back as a stack of stripes. But a
+stripe is a step, so the steps are chosen deliberately and the set has nothing
+left to ruin. The light pool falls off in discrete steps, the boards are flat
+tones with hard seams, and there is **no ramp anywhere in the emitted
+stylesheet**.
+
+**The table brightens; the room does not.** The obvious cure for "too dark" is
+to lighten the background, and it would break the signature: the chips sit on
+the floor, and a saturated colour needs a dim ground. A lamp over a table lights
+the table, not the room.
+
+## Why the mean luminance of the tabletop barely moved, and what brightened instead
+
+This has to be said first, because it is the one place the result differs from
+what "brighter" sounds like.
+
+The brightest surface any text on this screen sits on is the lightest board of
+the tabletop. `.m8-code-line` — the error code — is 18px at 1280, which is the
+one piece of text in the whole product below the 24px threshold for "large", so
+it needs **4.5:1**. Paper is `#fff6ec`, so that caps the lightest board at a
+relative luminance of about 0.168. It is at **0.1636**, giving 4.60:1. The old
+terracotta was 0.148. So the brightest part of the table went up by 11% and no
+further, and everything the lamp shades goes *down* from there.
+
+Raising the error code to 24px would have lifted that cap. It was not done: it
+is a change nobody asked for, and the picture did not need it. What answers
+*muito triste* is not mean luminance, it is **structure and range** — a floor
+that has something in it, a tabletop made of boards, a pool of light with a
+middle and an outside, and shadows that agree about where the light is. The
+lightest board is now 3.64:1 against the floor where the old flat terracotta was
+3.38:1, and the darkest shaded board is 2.57:1, so the slab has modelling where
+it had none.
+
+## The palette
+
+`packages/tokens/tokens.css`, still the only file in the repository where a
+colour is written down.
+
+| Token | Was | Is | What it is |
+|---|---|---|---|
+| `--m8-ground` | `#1c1614` | **unchanged** | the face of one floor tile |
+| `--m8-floor-seam` | — | **`#0d0908`** | the joint between two floor tiles |
+| `--m8-lamp-1` | — | **`rgba(255, 217, 168, 0.16)`** | the lamp, near the table |
+| `--m8-lamp-2` | — | **`rgba(255, 217, 168, 0.06)`** | the lamp, everywhere else |
+| `--m8-plank-light` | — | **`#9b6437`** | the lightest board |
+| `--m8-table` | `#b44a32` | **`#945f35`** | the middle board — and still the name both Tailwind configurations read |
+| `--m8-plank-dark` | — | **`#8d5b32`** | the darkest board |
+| `--m8-plank-seam` | — | **`#4a2e15`** | the joint between two boards |
+| `--m8-table-shade-1` | — | **`rgba(30, 12, 4, 0.07)`** | the tabletop, one step out from the lamp |
+| `--m8-table-shade-2` | — | **`rgba(30, 12, 4, 0.15)`** | and two |
+| `--m8-table-edge` | `#7a2e1d` | **`#553519`** | the front face of the tabletop |
+| `--m8-alarm` | — | **`#ffbfad`** | the one headline that says something is wrong |
+| `--m8-paper` | `#fff6ec` | unchanged | pieces and the QR, never a panel |
+| `--m8-ink` | `var(--m8-ground)` | unchanged | and so it followed the floor again |
+| `--m8-shadow` | `rgba(45, 18, 10, 0.45)` | unchanged | what a piece casts on the table |
+
+`--m8-ground` was deliberately **not** touched. Every one of the eight person
+colours is measured against it, so changing it would have moved all eight at
+once; the floor gains structure and light on top of it instead.
+
+Three tokens repeat an rgb triple at different alphas. That is not a second copy
+of a colour escaping the file — CSS has no way to restate an existing colour at
+a new alpha that this screen may use (`color-mix()` and relative colour syntax
+are both Chromium 111 against a floor of 68), so each step is written once,
+here, and named.
+
+### `--m8-alarm` is a defect this round found by measuring
+
+`.m8-headline-alarm` — `SOMETHING WENT WRONG`, 92px and 64px — was
+`var(--m8-person-1)`. Coral on the old terracotta is **1.73:1**, and on the new
+lightest board it would have been **1.38:1**. It had never been measured in any
+round. A pale warm red clears 3:1, which is the threshold for text that size:
+`#ffbfad` is **3.12:1** on the lightest board, 3.37 on the middle one, 3.62 on
+the darkest, and 3.44 to 4.41 wherever the lamp shades it. It still reads as an
+alarm rather than as paper beside it, because the hue difference does the work
+the luminance difference cannot.
+
+## Every contrast figure, recomputed
+
+Computed on this machine against the exact composites the browser produces —
+each translucent lamp step and shade step alpha-composited over the opaque
+surface beneath it, not against the base colour with the overlay ignored. The
+script reproduces every published figure of the previous round exactly (4.95,
+16.73, 3.38 and the eight person colours) before being trusted with these.
+
+### The eight person colours, against the floor
+
+A chip carries a person's colour twice: as the fill of a 96px or 60px disc, and
+as the word `RECONNECTING` under their name in the display face at 19px and
+**13px**. Thirteen pixels is below "large", so the binding threshold for the
+whole design is **4.5:1**, not 3:1, and it binds at 1280×720.
+
+| | Colour | Unlit floor tile | **Lit floor tile, outer step — where the chips are** | Lit floor seam, outer step | Lit floor tile, inner step |
+|---|---|---|---|---|---|
+| 1 | `#ff5b4a` coral | 5.83 | **5.11** | 5.87 | 3.87 |
+| 2 | `#2bd9e4` cyan | 10.35 | **9.07** | 10.41 | 6.87 |
+| 3 | `#c6f24e` lime | 13.81 | **12.10** | 13.89 | 9.16 |
+| 4 | `#ff63c1` pink | 6.65 | **5.83** | 6.69 | 4.41 |
+| 5 | `#ffb020` amber | 9.78 | **8.57** | 9.84 | 6.49 |
+| 6 | `#9b7bff` violet | 5.68 | **4.98** | 5.71 | 3.77 |
+| 7 | `#3dd68c` green | 9.53 | **8.36** | 9.59 | 6.33 |
+| 8 | `#4c8dff` blue | 5.59 | **4.90** | 5.62 | 3.71 |
+
+**All eight clear 4.5:1 on the floor the chips actually stand on**, the worst
+being blue at 4.90:1. No treatment was needed and none was invented. Two things
+made that hold, and both are load bearing rather than incidental:
+
+- **The floor seam is darker than the floor tile, not lighter.** A person colour
+  is judged against whatever is brightest beneath it, and a lighter grout would
+  have become that. Darker, it can only give contrast back — which is why the
+  seam column above is *better* than the tile column, and why the tile is the
+  worst case rather than the seam. It is also what a groove in a dim room looks
+  like from above, so the constraint and the picture agree.
+- **The bright step of the lamp stops above the row of people.** On the inner
+  step, blue is 3.71:1, violet 3.77 and coral 3.87 — three of the eight under
+  4.5. So "the pool ends before the people do" is a contrast guarantee written
+  as a percentage inside a gradient, which is exactly the sort of thing nothing
+  would notice changing. It is now a test; see *The lamp is pinned by
+  arithmetic* below.
+
+### The code characters, the paper, and the two message screens
+
+| | Ratio | Threshold it has to clear |
+|---|---|---|
+| `--m8-ink` on `--m8-paper` — the four code characters | **16.73** | 4.5 |
+| paper tile on the lightest board (lit centre) | **4.60** | 3 (a large object) |
+| paper tile on the middle board | 4.98 | 3 |
+| paper tile on the darkest board, fully shaded | 6.51 | 3 |
+| paper tile on a board seam | 11.61 | — |
+| `.m8-address` (40px / 28px) on the lightest board | **4.60** | 3 |
+| `.m8-headline` `OPENING THE TABLE` (92px / 64px) | **4.60** | 3 |
+| `.m8-message` `Reload this screen.` (44px / 32px) | **4.60** | 3 |
+| `.m8-code-line` the error code (26px / **18px**) | **4.60** | **4.5** — the binding one |
+| `.m8-headline-alarm` on the lightest board | **3.12** | 3 |
+| `.m8-wordmark` and `.m8-eyebrow`, paper on the unlit floor | 16.73 | 3 |
+| the same, on the brightest lit floor | **11.11** | 3 |
+| `.m8-chip-name`, paper on the floor the chips stand on | **14.66** | 4.5 |
+
+Every board figure is quoted at its worst — the lightest board, at the lit
+centre of the table, which is where the code block and both message screens sit.
+The waiting and the error screens share the tabletop, so that block is theirs
+too. The error screen was driven and photographed rather than reasoned about.
+
+### The room reading as a room
+
+| | Ratio | |
+|---|---|---|
+| lightest board vs unlit floor | **3.64** | was 3.38 for the flat terracotta |
+| middle board vs unlit floor | 3.36 | |
+| darkest board fully shaded vs unlit floor | **2.57** | the table's outer corners |
+| board seam vs lightest board | **2.52** | what makes the boards read as boards |
+| floor seam vs floor tile | 1.11 | a ratio is the wrong instrument here — see below |
+| a piece's shadow vs the board under it | 1.82 | 1.57 on shaded wood |
+
+The lighting stack still descends the whole way down, which is what stops the
+edge band reading as a hole rather than as a front face: lightest board
+**0.1636** → darkest shaded board **0.1010** → edge band **0.0455** → floor
+**0.0087**, in relative luminance. That ordering is now asserted by a test
+rather than stated here.
+
+**Two of these are better judged in code values than in ratios.** A contrast
+ratio is dominated by the +0.05 flare term at these luminances and says almost
+nothing about whether a line is visible on a near-black floor. The floor seam is
+**15, 13, 12** code values below the tile; the lamp's outer step is **14, 12, 9**
+above the unlit floor; the inner step is another **23, 20, 15** above that. In a
+dark region of an 8-bit sRGB image those are plainly visible steps, and that is
+the measurement that matters for the floor. It is also the measurement most at
+risk on a real set — see the open list.
+
+### The phone, which shares the palette
+
+`apps/phone` draws the nickname field and the unchosen avatar tiles on
+`--m8-table`, so the change reached it.
+
+| | On the old terracotta | On the middle board |
+|---|---|---|
+| paper on the field (24px, large text) | 4.95 | **4.98** |
+| the eight person colours on an unchosen tile | 1.65 to 4.09 | **1.54 to 4.11** |
+
+The avatar picker's weak case is a fraction weaker and unchanged in kind: it was
+closed in the previous round by giving the chosen tile a border in the paper
+colour, **16.73:1** against the dark gaps between the tiles whatever the fill
+happens to be — a cue that does not depend on the palette, which is why this
+round did not have to touch it. Confirmed in the container at 390×844: the
+chosen tile carries `4px rgb(255, 246, 236)` and the rest `4px rgba(0, 0, 0, 0)`.
+
+## How the plank seams are built
+
+One `repeating-linear-gradient` on `.m8-table`, under the light pool. The boards
+run left to right, which is how a tabletop is built, so the gradient's axis is
+vertical and every joint is a horizontal line:
+
+```
+repeating-linear-gradient(to bottom,
+  plank-light 0,                     plank-light calc(16.6667% - seam),
+  plank-seam  calc(16.6667% - seam), plank-seam  16.6667%,
+  table       16.6667%,              table       calc(33.3333% - seam),
+  plank-seam  calc(33.3333% - seam), plank-seam  33.3333%,
+  plank-dark  33.3333%,              plank-dark  calc(50% - seam),
+  plank-seam  calc(50% - seam),      plank-seam  50%)
+```
+
+Three tones and three joints repeating every 50% of the table's height, so the
+table is always **six boards** whatever height it is given, at either
+resolution, with no second tier to keep in step. The pitch is a fraction of the
+element and the joint is a length, and `calc()` — Chromium 26 — puts the two
+together. The tone repeats with a period of three across six boards, which at
+three metres is not a period anybody reads.
+
+There is no grain and there will not be. At three metres grain is noise, and it
+would cost an image the bundle has no room for. What reads as wood from the sofa
+is the joint and the tone changing across it, which is what is there.
+
+## How the light steps are built, and why they cannot band
+
+Two radial gradients: one on `body` for the floor, one on `.m8-table` for the
+tabletop. **Every colour is written twice, at the same position.** Two stops at
+one position is a hard stop: the renderer interpolates between adjacent stops
+only when their positions differ, so the region between any two boundaries is
+one flat tone.
+
+```
+radial-gradient(ellipse 140% 66% at 50% 40%,
+  lamp-1 0, lamp-1 38%, lamp-2 38%, lamp-2 100%, transparent 100%)      /* floor */
+
+radial-gradient(ellipse 60% 130% at 50% 46%,
+  transparent 0, transparent 46%, shade-1 46%, shade-1 72%, shade-2 72%)  /* table */
+```
+
+**On the brief's claim that stepped gradients cannot band: it is right about the
+mechanism it names, and there are two residuals it does not name.** Banding is
+the quantisation of a *ramp* — a smooth falloff crosses code-value boundaries at
+intervals, and a set's contrast processing stretches those intervals into
+visible contours. A flat region has no ramp to quantise, so there is nothing for
+the processing to find; that part of the claim holds, and it holds for the whole
+page, because there is now no smooth gradient anywhere in the emitted
+stylesheet. What can still happen at a *boundary* is (a) edge enhancement, which
+many sets apply and which would halo a step, and (b) Mach banding, which is the
+eye's own lateral inhibition making a flat region look brighter just inside a
+darker edge. Neither is banding and neither multiplies: there are two boundaries
+on the floor and two on the table, each of which this design drew on purpose, so
+the worst case is four deliberate edges looking slightly crisper than intended.
+**No smooth outer glow was used at all** — the brief allowed one and said to keep
+it minimal; it turned out not to be needed, so the residual banding risk in this
+page is zero rather than small.
+
+The claim is checked rather than asserted. `scripts/tv-safe-area.test.ts` parses
+every gradient in the stylesheet — the argument list, the stops, the positions —
+and fails if any two consecutive stops of different colours sit at different
+positions. It also asserts that there are exactly five gradients and no `url(`,
+so it cannot pass vacuously.
+
+### Why the floor's pool has two steps and not four
+
+Because there is almost no floor. The table spans the whole safe width, so the
+visible floor is a band above the table, two strips inside the overscan margin,
+and the area below the table where the people stand. A step boundary anywhere in
+that lower area cuts across the row of people and reads as a stain — this was
+tried, photographed, and rejected on the picture. The pool is therefore sized so
+its one visible boundary hugs the table's edges, where light spilling off a lit
+surface belongs, and so that its outer edge runs off the bottom of the screen
+entirely: the ellipse is 140% of the screen wide and 66% of it tall, which puts
+every other boundary outside the frame.
+
+The tabletop's pool is the mirror-image problem. A round pool on a slab three
+and a half times as wide as it is tall draws a visible oval in the middle of the
+boards, which reads as a stain rather than as light — that was the first version
+and it was rejected on the picture too. Stretched to 130% of the table's own
+height and 60% of its width, the same two steps land as gentle curves near the
+ends of the table, which is what a lamp over the middle of a long table does. A
+third version at 230% was tried and set aside: the boundaries went so nearly
+vertical that they read as columns on the empty waiting screen. All three were
+photographed at 1920×1080 before choosing.
+
+## How the shadow directions are derived
+
+`shadowSteps(pieceIndex, pieceCount, liftSteps)` in `apps/tv/src/tilt.ts`, and
+it is the one thing in that module that is not a hash. There is one lamp and it
+is above the middle of the table, so a shadow falls *away from the centre* —
+which means where it falls is decided by where the piece is, not by the code.
+Every table in the world throws its shadows the same way, and that is correct: a
+lamp is not scattered.
+
+```
+across = round(|2·index / (count − 1) − 1| · MAX_SHADOW_STEPS) · sign(...)
+down   = sign(liftSteps)
+```
+
+For the five pieces of a join screen that is `-4, -2, 0, +2, +4` steps sideways,
+mirrored about the middle of the row, and one step up or down according to which
+way that piece's own lift took it. Emitted as
+
+```
+calc(var(--m8-shadow-step) * A)
+calc(var(--m8-shadow-lift) + var(--m8-shadow-step) * D)
+var(--m8-shadow-blur) var(--m8-shadow)
+```
+
+so no length leaves the stylesheet, exactly as the transform and the gap already
+do not.
+
+Four things about it are deliberate:
+
+- **The sideways term is large and the vertical term is small, and that is
+  physics rather than taste.** A piece at the end of the row is all the way out
+  from the centre horizontally; a lift moves a piece three steps off a centre
+  line that is most of the table's height from its edge. A radial direction that
+  treated the two axes alike would be wrong.
+- **The horizontal position is approximated by the index**, not by pixels. The
+  lengths on this screen live in the stylesheet and this module cannot see them.
+  What the eye reads is the ordering and the sign, and those are exact. It is
+  written down where the function is.
+- **The stylesheet still declares a straight-down shadow** on `.m8-tile` and
+  `.m8-qr`, and the renderer overrides it. A piece that somehow never reaches
+  the renderer still rests on the table rather than floating, and the existing
+  test that pins that declaration is untouched.
+- **The shadow turns with the piece**, up to eight degrees, because it is drawn
+  on the rotated element. At this blur and these offsets that is not visible,
+  and the alternative is a second element under every tile.
+
+`--m8-shadow-lift` fell from 4px and 7px to **3px and 5px** to pay for the new
+step, so the largest downward reach is unchanged in kind: 5+3 = 8px at 1920 and
+3+2 = 5px at 1280, plus half the blur. That was not a preference — at the old
+lift the vertical proof failed by a tenth of a pixel, and the model said so
+before anything was drawn.
+
+## The lamp is pinned by arithmetic, and so is the shadow
+
+`scripts/tv-safe-area.ts` gained three functions, and the model is no longer
+only about boxes on the table:
+
+- `shadowReach(base, steps, step, blur)` — how far a shadow reaches past the
+  piece on one side. Charged downwards as `--m8-shadow-lift` plus one step plus
+  half the blur, and sideways as `MAX_SHADOW_STEPS` of the step plus half the
+  blur, at each end of the row.
+- `radialStopEdge(centre, radius, fraction)` — where a stop in a radial gradient
+  lands on the screen, as a percentage of its height.
+- `peopleTopEdge(stage, inset, table, rowGap)` — where the first line of chips
+  begins, measured from the top of the *screen* rather than of the safe area,
+  because a gradient on `body` resolves against the viewport and knows nothing
+  about the overscan margin.
+
+The assertion those three exist for is
+`'stops the bright step of the lamp above the row of people'`, at both
+resolutions, at eight participants — the worst case, because eight take two
+lines, the table above is squeezed smallest, and the row starts highest. The
+ellipse and the stop position are **read out of the stylesheet**, the way every
+other size in that file already is. Measured: the bright step ends at 65.08% of
+the screen's height and the people begin at 69.26% at 1920×1080 and 70.00% at
+1280×720 — 45px and 35px of margin. Verified as a guard by moving the stop from
+38% to 55% and watching both resolutions fail, then putting it back.
+
+`MAX_SHADOW_STEPS` joins `TILT_MIN_DEGREES`, `TILT_MAX_DEGREES`,
+`MAX_LIFT_STEPS` and `MAX_SPACE_STEPS` in the list of tilt-module constants the
+safe-area test reads out of the source text and agrees with. The sideways sweep
+now charges a shadow at each end of the row, and the address-line and
+stays-on-the-table proofs charge the downward one.
+
+Six more stylesheet facts are pinned, each because the arithmetic or a contrast
+figure above depends on it: that both tiers declare `--m8-shadow-step`; that the
+floor is on `body` with `--m8-ground` beneath it and both lamp steps and the
+seam in it; that the floor seam's luminance is **below** the floor tile's; that
+the lighting stack descends board → shaded board → edge → floor; that the
+tabletop names all three board tones and both shade steps and runs its gradient
+`to bottom`; and the hard-stop property described above.
+
+## What each thing cost, in bytes
+
+Measured the way the previous round measured its shadows: remove exactly that
+feature — its rules, its size tokens and its colour tokens — rebuild, and gzip
+the emitted files. The figures do not sum to the round total, because gzip
+shares between them; each is what removing that one thing gives back.
+
+| | Gzipped bytes |
+|---|---|
+| The tiled floor (two repeating gradients, two size tokens, one colour) | **64 B** |
+| The lamp on the floor | **53 B** |
+| The boards | **109 B** |
+| The lamp on the table | **52 B** |
+| The directional shadows (25 B stylesheet, 151 B JavaScript) | **176 B** |
+| Everything else — the enlarged token set, `--m8-alarm`, the extra size tokens at both tiers | ~140 B |
+| **Round total** | **594 B** (38,805 → 39,399) |
+
+The ceiling **did not move**: 42,000 B, with **2,601 B** of headroom. No image
+was added and none will be — the whole room is five gradients.
+
+## Verified
+
+Through PowerShell, because the sandboxed Bash tool still kills every vitest
+worker and reports zero tests.
+
+- `npm test` — **601 passed, 33 files** (578 before this round; 23 new
+  assertions, no new file).
+- `npm run typecheck` — clean across all three projects.
+- `npm run guards` — ES2017 syntax check passed; Chromium 68 CSS check passed;
+  size **39,399 B** against the unchanged **42,000 B** ceiling.
+- `docker compose up --build -d` — rebuilt and running, serving the large
+  screen.
+
+**Looked at as pictures**, in the container, in a real headless Chromium driven
+over the DevTools protocol, at both resolutions: the join screen; a table with
+eight people at sixteen-character nicknames; one of them dropped; and — through
+a stand-in server that serves the real television bundle and answers
+`helloTable` with nothing, or with an error — the waiting screen and the error
+screen. Plus the phone at 390×844 through the profile form.
+
+What the screen looks like at 1920×1080: a dark room seen from above, floored in
+240px square tiles with a darker joint between them; a wooden table across the
+middle of it, six boards deep with a visible joint between each pair and the
+boards at slightly different tones; a pool of warm light over the middle of the
+table falling off in two steps towards its ends, and a band of the same light on
+the floor hugging the table's top edge; four paper tiles and the QR lying on the
+wood at different angles and heights, each casting a shadow that leans *away
+from the middle of the table* — the leftmost 12px to the left, the QR 12px to
+the right, the middle of the row straight down; and eight coloured discs on the
+floor below, in two lines. At 1280×720 the same picture, with the shadows at 8px
+and the floor tiles at 160px.
+
+Measured in the same run, eight people at sixteen characters with one dropped:
+
+| | 1280×720 | 1920×1080 |
+|---|---|---|
+| pieces from the top of the surface | 32px | 44px |
+| from its lower edge | 14px | 20px |
+| from its left / right | 102 / 92px | 93 / 79px |
+| lines of people | 2 | 2 |
+| last chip's bottom edge vs the safe line | 656 vs 656 | 984 vs 984 |
+| document scroll | none | none |
+| the bright step of the lamp vs the first chip | 469 vs 504px | 703 vs 748px |
+
+The dropped participant's disc empties to a lime outline with `RECONNECTING`
+under their name in the same lime, legible against the floor at both sizes. The
+error screen draws `SOMETHING WENT WRONG` in the new alarm colour on the boards,
+with `Reload this screen.` and `table-unavailable` under it, and reads clearly.
+
+Everything the earlier rounds pinned still holds and still passes: a
+disconnected participant renders visibly differently with the word
+`RECONNECTING` in that person's own colour, a nickname is text and never markup,
+a participant with no nickname renders a placeholder, nothing interactive is
+rendered anywhere, the QR `<img>` is reused across renders, a departure neither
+desynchronises the colours nor replays the arrival animation for survivors, the
+chip cap keeps eight sixteen-character names inside the safe area, and the
+scatter's measured pattern rates stay under their ceilings with the lean-flip
+rate above its floor.
+
+**No existing assertion was weakened or removed.** One was extended — the list
+of tilt constants the safe-area test agrees with gained `MAX_SHADOW_STEPS` — and
+one written earlier in this same round was edited when the floor's pool went
+from three steps to two. The `.m8-tile` and `.m8-qr` `box-shadow` declarations
+are still asserted verbatim.
+
+## Not verified, and open
+
+- **Nothing from this round has been on a real television**, which is the whole
+  of the risk in it. `docs/tv-smoke-test.md` gained a step 16 for the room, and
+  its step 14 now covers the shadow directions; both are unrun.
+- **The floor grid and the board joints are the two things a set can crush.**
+  The floor joint is 15, 13, 12 code values below the tile, and the whole floor
+  lives between code values 20 and 55; a set with an aggressive contrast or
+  "dynamic contrast" setting crushes shadow detail, and if it crushes this, the
+  floor reads as one flat colour and the room goes back to being empty. There is
+  no way to know that from a PC monitor. Step 16 asks for the picture mode to be
+  recorded alongside the answer, because the fix — if one is needed — is to
+  widen those code-value gaps, and knowing by how much requires knowing what
+  happened.
+- **The banding argument is argued, checked in the stylesheet, and not observed
+  on the target.** The claim above is that a page with no ramp in it cannot
+  band; the residual risks named there — edge enhancement haloing a step, Mach
+  banding at a boundary — are properties of the set and the eye rather than of
+  the page, and neither can be checked here. Step 16 asks explicitly for
+  stripes.
+- **The lamp's reach is proved against the model, not against a browser.** The
+  test compares a percentage of the viewport with a pixel row computed from
+  declared sizes, and the numbers measured in the container agree with it to the
+  pixel — but the two are the same arithmetic, so that agreement is a
+  consistency check and not an independent one.
+- **The sideways shadow offset is small: 12px on a 224px tile at 1920.** It is
+  bounded by the QR's shadow having to stay on the table, which the model
+  charges. Whether the direction is *legible* at three metres, as opposed to
+  merely present, is a question for step 14 on real hardware. It is a cue meant
+  to work without being noticed, which also makes it the hardest one to confirm.
+- **The tabletop cannot brighten further while the error code is 18px.** Stated
+  above with the arithmetic. If a later round wants a brighter table, that line
+  is the thing to change first, and this paragraph is the note saying so.
+- **The phone's avatar picker is a fraction weaker again**, 1.54:1 at worst
+  where it was 1.65:1, and unchanged in kind: the paper border added last round
+  is what carries it, and `apps/phone` still has no DOM test, so
+  `avatarTileClassName` plus smoke-test step 15 remain the only guards.
+- **The floor's light pool has one visible boundary rather than a falloff**,
+  because there is not enough visible floor for more. That is a real reduction
+  against what the brief described — "the light pool falls off in discrete
+  steps" is fully true of the tabletop and only half true of the floor — and it
+  was chosen after photographing the alternative, which put a step boundary
+  across the row of people.
+- **`.m8-address` is still uncapped**, the CSS guard is still a closed list, the
+  safe-area model still models boxes rather than glyphs, `prefers-reduced-motion`
+  still does nothing on the oldest supported sets, nicknames outside Latin-1
+  still fall back to a system font, the baton still has no visual mark, and the
+  two zigzag residuals and the lag-2 angle repetition from the previous round
+  are unchanged and still unpinned. None of them was touched here.

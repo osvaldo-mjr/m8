@@ -85,11 +85,15 @@ supported on Chromium 68, and none has an experiment behind it.
 13. With three or more people seated, confirm each has a visibly different
     colour, and that the colour on somebody's phone is the same as the colour
     of their chip on the television.
-14. Confirm each tile and the QR cast a soft shadow onto the terracotta, and
-    that the table carries a darker band along its lower edge. Both are what
-    make it a table rather than a coloured rectangle; a set that drops
+14. Confirm each tile and the QR cast a soft shadow onto the wood, and that
+    the table carries a darker band along its lower edge. Both are what make
+    it a table rather than a coloured rectangle; a set that drops
     `box-shadow` would leave the tilt reading as a layout mistake, and one
-    that drops the `border-bottom` would leave the table flat.
+    that drops the `border-bottom` would leave the table flat. Confirm the
+    shadows fall *away from the middle of the table* — the leftmost tile
+    throws left, the QR throws right, the middle of the row throws straight
+    down — because that is what says there is one lamp above the table
+    rather than five.
 15. On the phone, before joining, tap through the avatar picker (`YOUR FACE`)
     and confirm the chosen tile is marked by a visible border, not only by a
     change of fill colour. `apps/phone` has no DOM test, so this step is the
@@ -97,6 +101,27 @@ supported on Chromium 68, and none has an experiment behind it.
     happened once, silently, when the palette changed and the chosen tile's
     fill dropped as low as 1.65:1 against an unchosen one for three of eight
     avatars — caught only because the owner looked at a phone.
+16. The room, which is the whole of the round that added this step. Confirm,
+    from three metres:
+    - the floor behind the table reads as a grid of square tiles, with a
+      darker joint between them. The joints are fifteen code values below the
+      tile at their strongest, which is inside the range a set with an
+      aggressive contrast or "dynamic contrast" setting can crush to a flat
+      black. If the floor reads as one flat colour, say so and say what the
+      set's picture mode was — that is the finding, not a defect in the page.
+    - the tabletop reads as **boards**: five horizontal joints across it, and
+      the boards either side of a joint at slightly different tones. Same
+      crush risk in the other direction, and the same thing to record.
+    - the light is a **pool over the middle of the table**, brightest in the
+      centre and falling off towards the ends, with a warmer band of floor
+      hugging the table's top edge.
+    - **and this is the one this step exists for: look for stripes.** The
+      light pool and the boards are drawn as flat steps with hard edges
+      precisely so that a set's picture processing has no ramp to quantise
+      into bands. If any of it comes back as a stack of stripes rather than
+      as two or three flat regions, the argument in
+      `docs/notes/visual-identity-report.md` is wrong on real hardware and
+      needs to know.
 
 ## What to record on failure
 

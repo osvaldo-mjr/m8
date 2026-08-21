@@ -15,7 +15,7 @@
  *   - no `clamp()`, `min()` or `max()` (Chromium 79), so sizes are fixed and
  *     a media query moves between resolutions;
  *   - no `aspect-ratio` (88), so the tiles carry an explicit width and height;
- *   - no `gap` in flexbox (84) — `gap` in *grid* has worked since 66 and would
+ *   - no `gap` in flexbox (84) â€” `gap` in *grid* has worked since 66 and would
  *     be safe, but margins are used for spacing everywhere regardless: the
  *     distinction is a trap, and someone changing a `grid` to a `flex` later
  *     would silently lose every space on the television with nothing in the
@@ -37,14 +37,24 @@
  *     lifted bounding box is what sets the least height the table can be
  *     drawn in, and it lies alone rather than in a row so there is no
  *     baseline for it to break out of.
- *   - `--m8-shadow-lift` and `--m8-shadow-blur` are how far a piece appears
- *     to float above the surface. The blur stays modest on purpose: a
- *     television GPU pays for a large one, and it is composited under a
- *     rotated element.
+ *   - `--m8-shadow-lift`, `--m8-shadow-step` and `--m8-shadow-blur` are how
+ *     far a piece appears to float above the surface, and which way its
+ *     shadow falls. There is one lamp in this picture and it is above the
+ *     middle of the table, so a shadow does not fall straight down: the piece
+ *     at each end of the row throws its shadow outwards by
+ *     `MAX_SHADOW_STEPS` of `--m8-shadow-step`. The blur stays modest on
+ *     purpose: a television GPU pays for a large one, and it is composited
+ *     under a rotated element.
+ *
+ * Three more are the room itself: `--m8-floor-tile` and
+ * `--m8-floor-seam-width` are the pitch and the joint of the tiled floor, and
+ * `--m8-plank-seam-width` is the joint between two boards of the tabletop.
+ * The boards' pitch is a fraction of the table rather than a length, so six
+ * of them fit whatever height the table is given at either resolution.
  *
  * `--m8-qr-size` and `--m8-piece-gap` were both re-cut when the tilt widened.
  * The QR gave up 16%, which is what paid for the wider angles, the lifts and
- * the table's own thickness — see the arithmetic in
+ * the table's own thickness â€” see the arithmetic in
  * `scripts/tv-safe-area.test.ts`. The gap grew because two tiles turned in
  * opposite directions reach towards each other by up to `extent - size`
  * pixels, and a gap narrower than that lets them touch.
@@ -56,8 +66,12 @@
   --m8-piece-gap: 24px;
   --m8-scatter-step: 6px;
   --m8-qr-scatter-step: 3px;
-  --m8-shadow-lift: 4px;
+  --m8-shadow-lift: 3px;
+  --m8-shadow-step: 2px;
   --m8-shadow-blur: 9px;
+  --m8-floor-tile: 160px;
+  --m8-floor-seam-width: 3px;
+  --m8-plank-seam-width: 3px;
   --m8-qr-size: 208px;
   --m8-qr-padding: 18px;
   --m8-qr-radius: 14px;
@@ -87,8 +101,12 @@
     --m8-piece-gap: 40px;
     --m8-scatter-step: 10px;
     --m8-qr-scatter-step: 4px;
-    --m8-shadow-lift: 7px;
+    --m8-shadow-lift: 5px;
+    --m8-shadow-step: 3px;
     --m8-shadow-blur: 14px;
+    --m8-floor-tile: 240px;
+    --m8-floor-seam-width: 4px;
+    --m8-plank-seam-width: 4px;
     --m8-qr-size: 320px;
     --m8-qr-padding: 26px;
     --m8-qr-radius: 22px;
@@ -127,7 +145,7 @@
   /*
    * Tailwind's preflight sets this so a bordered element needs only a width.
    * Preflight is off here, so without it `border-width: 3px` alone draws
-   * nothing (the initial `border-style` is `none`) — a rule that works
+   * nothing (the initial `border-style` is `none`) â€” a rule that works
    * everywhere it is written today and silently draws nothing the first time
    * somebody writes the short form.
    */
@@ -142,13 +160,81 @@ body {
 
 /*
  * The text face, on the document. Every element that draws text names its own
- * family, so nothing visible depended on this — but that is what made it
+ * family, so nothing visible depended on this â€” but that is what made it
  * worth writing down: with preflight off, anything added without a
  * `font-family` inherits the browser's default serif on a screen that has no
  * serif anywhere in it. The phone declares the same rule for the same reason.
  */
 body {
   font-family: var(--m8-font-text);
+  /*
+   * The floor of the room, and the lamp above the table, drawn as three
+   * background layers over `--m8-ground` and nothing else: no image, no
+   * element, no bytes on the wire beyond this declaration. The layers are
+   * listed topmost first, which is the light, then the two sets of joints
+   * that make the floor a grid of square tiles.
+   *
+   * `body` rather than `.m8-safe`, because the floor has to run under the
+   * overscan margin: a floor that stopped on the safe line would draw a
+   * rectangle round the picture on every set that crops, which is the one
+   * thing the safe margin exists to avoid. A background on `body` is
+   * propagated to the canvas and painted over the whole viewport.
+   *
+   * **The light is steps, and every stop is a hard stop.** A television
+   * applies its own contrast processing, and a smooth falloff is exactly what
+   * that ruins â€” it comes back as a stack of stripes. Banding is a *ramp*
+   * being quantised, so a light with no ramp in it has nothing to quantise:
+   * every colour below is written twice, at the same position, so each ring
+   * is one flat tone and the boundary between two rings is an edge this
+   * design drew on purpose. The outermost ring is nine code values above the
+   * unlit floor, which lands as a soft edge rather than as a line.
+   *
+   * The pool is centred above the table rather than on the screen, and its
+   * shape is chosen so that exactly one boundary is ever visible: the ellipse
+   * is far wider than the screen and only two thirds as tall, so the step
+   * between the two tints lands as a flat arc hugging the table's top and
+   * lower edges â€” light spilling off a lit surface â€” while the outer edge of
+   * the pool runs off the bottom of the picture entirely. Any boundary
+   * between the table and the bottom of the screen would cut across the row
+   * of people, which reads as a stain rather than as light.
+   *
+   * The dimmer of the two tints is what the row of people stands on, which
+   * is what caps it: the eight person colours are measured against whatever
+   * is brightest under a chip, and the smallest of the eight has to clear
+   * 4.5:1 there. On the brighter tint it would not â€” blue falls to 3.71:1 â€”
+   * so "the bright step stops above the people" is a load-bearing claim
+   * about a percentage in a gradient, and `scripts/tv-safe-area.test.ts`
+   * checks it against where the row of people actually starts rather than
+   * leaving it to this paragraph. See `packages/tokens/tokens.css`.
+   *
+   * The seams are `--m8-floor-seam`, which is *darker* than the tile. A
+   * lighter grout would become the brightest thing under a chip and would
+   * cost every person colour some contrast; a darker one can only ever give
+   * contrast back.
+   */
+  background-image: radial-gradient(
+      ellipse 140% 66% at 50% 40%,
+      var(--m8-lamp-1) 0,
+      var(--m8-lamp-1) 38%,
+      var(--m8-lamp-2) 38%,
+      var(--m8-lamp-2) 100%,
+      transparent 100%
+    ),
+    repeating-linear-gradient(
+      to right,
+      var(--m8-floor-seam) 0,
+      var(--m8-floor-seam) var(--m8-floor-seam-width),
+      transparent var(--m8-floor-seam-width),
+      transparent var(--m8-floor-tile)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--m8-floor-seam) 0,
+      var(--m8-floor-seam) var(--m8-floor-seam-width),
+      transparent var(--m8-floor-seam-width),
+      transparent var(--m8-floor-tile)
+    );
+  background-color: var(--m8-ground);
 }
 
 p,
@@ -169,7 +255,7 @@ img {
 /*
  * Overscan: many televisions crop the outer edge of the picture, so nothing
  * may live in the outer 5%. A percentage padding resolves against the width
- * on all four sides, which is what is wanted here — the horizontal crop is
+ * on all four sides, which is what is wanted here â€” the horizontal crop is
  * the larger one.
  */
 .m8-safe {
@@ -207,10 +293,11 @@ img {
 }
 
 /*
- * The table: a rigid, perfectly square surface, clearly lighter than the room
- * behind it. It is the one thing here that is never turned — the contrast
- * between a rigid surface and things casually put down on it is what makes
- * the arrangement read as real rather than as a filter.
+ * The table: a rigid, perfectly square wooden surface, lit from above and
+ * clearly lighter than the room behind it. It is the one thing here that is
+ * never turned â€” the contrast between a rigid surface and things casually put
+ * down on it is what makes the arrangement read as real rather than as a
+ * filter.
  *
  * The band along the lower edge is the front face of the tabletop, and it is
  * the difference between a piece of furniture with height and a colour
@@ -230,6 +317,57 @@ img {
   justify-content: center;
   margin-top: var(--m8-row-gap);
   background-color: var(--m8-table);
+  /*
+   * The tabletop is boards, and the boards are what make it wood.
+   *
+   * Two layers, topmost first: the lamp falling away from the middle of the
+   * table, then the boards themselves. Both are hard-stopped for the reason
+   * spelled out on `body` above â€” a flat tone cannot band, and a set's
+   * picture processing has nothing to work on.
+   *
+   * The pool is taller than the table and narrower than it, on purpose. A
+   * circular pool on a slab three and a half times as wide as it is tall
+   * draws a visible oval in the middle of the boards, which reads as a stain
+   * rather than as light; stretched past the table's own height, the same
+   * two steps land as soft curves near the ends of the table, which is what
+   * a lamp over the middle of a long table actually does. Measured by
+   * looking at the picture, not by reasoning about it.
+   *
+   * The boards run left to right, which is how a tabletop is built, so the
+   * gradient axis is vertical and each joint is a horizontal line. Three
+   * tones and a joint repeating every 50% of the table's height gives six
+   * boards at any table height, at either resolution, with no second tier to
+   * keep in step â€” the pitch is a fraction of the table, the joint is a
+   * length, and `calc()` puts the two together.
+   *
+   * Fine grain is deliberately absent. At three metres it is noise, and it
+   * would cost an image that this bundle has no room for. What reads as wood
+   * from the sofa is the joint between two boards and the tone changing
+   * across it, which is exactly what is here.
+   */
+  background-image: radial-gradient(
+      ellipse 60% 130% at 50% 46%,
+      transparent 0,
+      transparent 46%,
+      var(--m8-table-shade-1) 46%,
+      var(--m8-table-shade-1) 72%,
+      var(--m8-table-shade-2) 72%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--m8-plank-light) 0,
+      var(--m8-plank-light) calc(16.6667% - var(--m8-plank-seam-width)),
+      var(--m8-plank-seam) calc(16.6667% - var(--m8-plank-seam-width)),
+      var(--m8-plank-seam) 16.6667%,
+      var(--m8-table) 16.6667%,
+      var(--m8-table) calc(33.3333% - var(--m8-plank-seam-width)),
+      var(--m8-plank-seam) calc(33.3333% - var(--m8-plank-seam-width)),
+      var(--m8-plank-seam) 33.3333%,
+      var(--m8-plank-dark) 33.3333%,
+      var(--m8-plank-dark) calc(50% - var(--m8-plank-seam-width)),
+      var(--m8-plank-seam) calc(50% - var(--m8-plank-seam-width)),
+      var(--m8-plank-seam) 50%
+    );
   border-bottom: var(--m8-table-thickness) solid var(--m8-table-edge);
   border-radius: var(--m8-table-radius);
 }
@@ -253,10 +391,16 @@ img {
  * The shadow is the strongest cue available that a thing rests on a surface,
  * and it is what the tilt needs to be legible: turned and shadowed reads as
  * an object dropped on a table, turned alone reads as a layout mistake. It
- * rotates with the tile, which is right — the light does not turn with it,
- * but at these angles and this blur nobody sees the difference, and the
- * alternative is a second element per tile on a screen that has to stay
- * light.
+ * rotates with the tile, which is nearly right â€” the lamp does not turn with
+ * it, but eight degrees at this blur is not visible, and the alternative is a
+ * second element per tile on a screen that has to stay light.
+ *
+ * The declaration here is straight down, and it is the floor rather than the
+ * finished article: `apps/tv/src/tilt.ts` writes an inline `box-shadow` on
+ * every piece, throwing it away from the middle of the table by how far
+ * off-centre that piece is, because that is where the lamp is. A piece that
+ * somehow never reaches the renderer still rests on the table rather than
+ * floating.
  *
  * `margin-right` here is only the floor. `apps/tv/src/tilt.ts` writes an
  * inline `margin-right` on every tile but the last, widening the gap by a
@@ -297,7 +441,7 @@ img {
   margin-top: calc(var(--m8-row-gap) + var(--m8-scatter-step) * 2);
   /*
    * The one string on this screen nothing caps. It is
-   * `window.location.host` — short in every case anybody will meet, a LAN
+   * `window.location.host` â€” short in every case anybody will meet, a LAN
    * address and a port, but not *bounded* by anything here.
    *
    * `nowrap` puts that unbounded case on the axis that has room for it. The
@@ -305,7 +449,7 @@ img {
    * and has 33.8px of slack at 1920, so a second line would be a 40px
    * overflow of the table on the spot. Sideways there is 109px of slack and
    * the address is nowhere near as wide as the row of tiles above it, which
-   * is the assumption the sideways proof rests on — so it is written down
+   * is the assumption the sideways proof rests on â€” so it is written down
    * here, and `scripts/tv-safe-area.test.ts` asserts this declaration.
    */
   white-space: nowrap;
@@ -316,7 +460,13 @@ img {
   color: var(--m8-paper);
 }
 
-/* The same shadow as a tile: it is the same kind of object on the same table. */
+/*
+ * The same shadow as a tile: it is the same kind of object on the same table,
+ * and the renderer replaces this with the direction the lamp implies in the
+ * same way. The QR is the piece furthest from the middle, so it is the one
+ * whose shadow reaches furthest â€” which is what `scripts/tv-safe-area.ts`
+ * charges against the safe width.
+ */
 .m8-qr {
   padding: var(--m8-qr-padding);
   border-radius: var(--m8-qr-radius);
@@ -335,12 +485,12 @@ img {
  *
  * The row wraps, and it is allowed exactly two lines. That is not a
  * preference, it is arithmetic: the stage is a column, the table above is a
- * flex item whose content — the QR — will not shrink below 372px at 1920,
+ * flex item whose content â€” the QR â€” will not shrink below 372px at 1920,
  * and a television has no scrollbar and nobody standing at it to scroll. A third
  * line of people is therefore not a crowded screen, it is a line pushed into
  * the overscan margin, and a fourth is people who are at the table and not
  * on it. Wrapping alone did not close that: it was measured at eight
- * people, sweeping nickname length, and ten characters — an ordinary name —
+ * people, sweeping nickname length, and ten characters â€” an ordinary name â€”
  * already produced three lines.
  *
  * Two lines is bought by capping one chip at a quarter of the row, so four
@@ -352,7 +502,7 @@ img {
  * The cap only bites when the row is full of long names. Three people with
  * long names each get their quarter and are not truncated; eight people with
  * sixteen-character names each lose the tail of the name to an ellipsis, and
- * keep the two things this row is actually for — their colour and their
+ * keep the two things this row is actually for â€” their colour and their
  * avatar, which is what is legible from three metres anyway.
  *
  * The vertical space between the table and the people, and between two rows
@@ -376,7 +526,7 @@ img {
  * `flex: 0 0 auto` so a chip is as wide as its contents, `max-width: 25%` so
  * it can never be wider than a quarter of the line, and the space between
  * chips is `padding-right` rather than `margin-right` so that the quarter
- * includes it — four chips of 25% plus four margins would be more than the
+ * includes it â€” four chips of 25% plus four margins would be more than the
  * line holds, and the fourth would wrap.
  *
  * `overflow: hidden` is the other half of the cap: without it, content wider
@@ -385,7 +535,7 @@ img {
  * The quarter is `calc(25% - 1px)`, not a bare `25%`. Four chips at exactly a
  * quarter fill the line exactly, and at a width where 5% of the screen and a
  * quarter of what is left do not divide into whole pixels, per-item rounding
- * can push their sum a fraction over the line — which is the fourth chip
+ * can push their sum a fraction over the line â€” which is the fourth chip
  * wrapping, the three-line overflow this cap exists to prevent. Both design
  * resolutions happen to divide evenly and would not show it. The one pixel
  * shaved off is not visible at three metres and costs nothing the row needs.
@@ -403,7 +553,7 @@ img {
 /*
  * Below four people the quarter is width nobody is using, and a table of two
  * would truncate two nicknames with three quarters of the row empty. The
- * renderer writes how many sit abreast — never more than four — and the cap
+ * renderer writes how many sit abreast â€” never more than four â€” and the cap
  * relaxes to match.
  *
  * These only ever loosen the rule above, never tighten it, and they exist
@@ -434,7 +584,7 @@ img {
   justify-content: center;
   /*
    * Never shrinks. A flex item's default is to give up width when the line is
-   * over-constrained, and the chip is deliberately over-constrained — it is
+   * over-constrained, and the chip is deliberately over-constrained â€” it is
    * capped at a quarter of the row. Without this the disc gave up thirteen
    * pixels of its width and none of its height, so the one circle carrying a
    * person's colour was drawn as an ellipse at eight people and a circle at
@@ -480,7 +630,7 @@ img {
 /*
  * Somebody who dropped: the disc empties out to an outline of their own
  * colour, so it is a hole in the row rather than a slightly different chip.
- * This was a real bug found on real hardware — a marker only in an attribute
+ * This was a real bug found on real hardware â€” a marker only in an attribute
  * is not a signal to anybody standing three metres away.
  */
 .m8-chip-away .m8-chip-disc {
@@ -491,7 +641,7 @@ img {
  * Smaller and tracked tighter than the other eyebrows, and its own token
  * rather than `--m8-note-type`: this one has to fit inside a quarter of the
  * row beside a disc, and the error code it used to share a size with does
- * not. It is measured, not guessed — see the note in
+ * not. It is measured, not guessed â€” see the note in
  * `scripts/tv-safe-area.test.ts`.
  */
 .m8-chip-note {
@@ -511,7 +661,7 @@ img {
  * The only animation in the product, and it has a job: the person who has
  * just scanned the code is looking up at the television to find out whether
  * their phone connected, and this is the confirmation. It is on `.m8-chip`
- * itself because the renderer reuses chip elements — an element being
+ * itself because the renderer reuses chip elements â€” an element being
  * created and a person arriving are now the same event.
  *
  * The media query below is honoured from Chromium 74. The declared floor for
@@ -557,8 +707,15 @@ img {
   color: var(--m8-paper);
 }
 
+/*
+ * The one headline that has to say "this is wrong", and it has its own colour
+ * rather than borrowing the first person's. Coral was never measured against
+ * the surface it sits on: 1.73:1 on the old terracotta, and 1.38:1 on the
+ * boards that replaced it. `--m8-alarm` clears 3:1 on the brightest board,
+ * which is the threshold for text this size.
+ */
 .m8-headline-alarm {
-  color: var(--m8-person-1);
+  color: var(--m8-alarm);
 }
 
 .m8-message {

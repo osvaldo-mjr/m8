@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_LIFT_STEPS,
+  MAX_SHADOW_STEPS,
   MAX_SPACE_STEPS,
   MIN_LIFT_SEPARATION_STEPS,
   MIN_SPACE_SEPARATION_STEPS,
@@ -8,8 +9,10 @@ import {
   TILT_MAX_DEGREES,
   TILT_MIN_DEGREES,
   arrangePieces,
+  pieceShadow,
   pieceSpacing,
   pieceTransform,
+  shadowSteps,
 } from './tilt.js'
 import type { PiecePlacement } from './tilt.js'
 
@@ -361,6 +364,76 @@ describe('the arrangement as a whole', () => {
     // because it is the property somebody in the room actually sees.
     const distinct = new Set(arrangement('KXTP').map((piece) => piece.degrees))
     expect(distinct.size).toBeGreaterThan(1)
+  })
+})
+
+/**
+ * The shadows, which are the one thing in this module that is not a hash.
+ *
+ * There is a single lamp in this picture and it is above the middle of the
+ * table, so where a shadow falls is decided by where the piece is, not by the
+ * code. It is deterministic geometry: given the same row, every table in the
+ * world throws its shadows the same way, and that is correct — a lamp is not
+ * scattered.
+ */
+describe('which way a piece throws its shadow', () => {
+  const across = (): number[] => {
+    const values: number[] = []
+    for (let index = 0; index < PIECE_COUNT; index += 1) {
+      values.push(shadowSteps(index, PIECE_COUNT, 0).across)
+    }
+    return values
+  }
+
+  it('throws it away from the middle of the row, further the further out', () => {
+    expect(across()).toEqual([-MAX_SHADOW_STEPS, -2, 0, 2, MAX_SHADOW_STEPS])
+  })
+
+  it('mirrors one end of the row against the other', () => {
+    // The lamp is over the middle. If the two ends were not mirror images,
+    // the light would be somewhere other than where the tabletop's own pool
+    // of light is drawn, and the picture would disagree with itself.
+    const values = across()
+    for (let index = 0; index < values.length; index += 1) {
+      // Asserted as a sum rather than as a negation: the middle of the row
+      // throws nothing, and `-0` is not `0` under `Object.is`.
+      expect((values[index] ?? 0) + (values[values.length - 1 - index] ?? 0)).toBe(0)
+    }
+  })
+
+  it('throws nothing sideways when there is nowhere to be off-centre', () => {
+    // A row of one is its own middle. This is not decoration: `pieceCount - 1`
+    // is a divisor, and a single piece is the case that would make it zero.
+    expect(shadowSteps(0, 1, 0).across).toBe(0)
+  })
+
+  it('follows the piece one step in whichever direction its own lift took it', () => {
+    // Small next to the sideways term, and deliberately: a lift moves a piece
+    // three steps off a centre line that is most of the table's height from
+    // its edge, where a piece at the end of the row is all the way out.
+    expect(shadowSteps(0, PIECE_COUNT, -3).down).toBe(-1)
+    expect(shadowSteps(0, PIECE_COUNT, 3).down).toBe(1)
+    expect(shadowSteps(0, PIECE_COUNT, 0).down).toBe(0)
+  })
+
+  it('never reaches further than the safe-area model charges for', () => {
+    // `scripts/tv-safe-area.test.ts` charges `MAX_SHADOW_STEPS` sideways and
+    // one step downwards. A piece that exceeded either would put a shadow
+    // into the overscan margin with nothing in the diff to see.
+    for (const lift of [-MAX_LIFT_STEPS, 0, MAX_LIFT_STEPS]) {
+      for (let index = 0; index < PIECE_COUNT; index += 1) {
+        const steps = shadowSteps(index, PIECE_COUNT, lift)
+        expect(Math.abs(steps.across)).toBeLessThanOrEqual(MAX_SHADOW_STEPS)
+        expect(Math.abs(steps.down)).toBeLessThanOrEqual(1)
+      }
+    }
+  })
+
+  it('writes it out of the stylesheet lengths, never a pixel', () => {
+    expect(pieceShadow({ degrees: 5, liftSteps: 2, spaceSteps: 1 }, 0, PIECE_COUNT)).toBe(
+      'calc(var(--m8-shadow-step) * -4) calc(var(--m8-shadow-lift) + var(--m8-shadow-step) * 1)' +
+        ' var(--m8-shadow-blur) var(--m8-shadow)',
+    )
   })
 })
 

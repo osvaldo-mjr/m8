@@ -5,7 +5,10 @@
  * and the row of people is what runs out of room first — but the scatter
  * added a sideways claim too: the pieces on the table are turned far enough
  * now that their corners have to be accounted for, so `rowExtent` and
- * `tiltOverhang` below answer "do the pieces stay on the table" as well.
+ * `tiltOverhang` below answer "do the pieces stay on the table" as well. The
+ * lamp added a second sideways claim on top of that, because a shadow thrown
+ * away from the middle of the table reaches past the piece that casts it —
+ * see `shadowReach`.
  *
  * A television crops the outer edge of its own picture and has no scrollbar
  * and nobody standing at it to scroll, so "it overflows a little" is not a
@@ -140,6 +143,34 @@ export function rowExtent(sizes: readonly number[], gaps: readonly number[], deg
   return total + tiltOverhang(first, degrees) + tiltOverhang(last, degrees)
 }
 
+/**
+ * How far a piece's shadow reaches past the piece, on one side.
+ *
+ * `base` is the constant offset the stylesheet declares — `--m8-shadow-lift`
+ * downwards, and nothing sideways. `steps` of `--m8-shadow-step` is what the
+ * lamp above the middle of the table adds: the pieces at the ends of the row
+ * throw their shadows outwards, so a shadow is now the one thing on this
+ * screen that claims room on both axes rather than only below. Half the blur
+ * radius is how far a box shadow's blur actually spreads past its own edge.
+ */
+export function shadowReach(base: number, steps: number, step: number, blur: number): number {
+  return base + steps * step + blur / 2
+}
+
+/**
+ * How far down the screen a stop in the lamp's radial gradient falls, as a
+ * percentage of the screen's height.
+ *
+ * The pool is an ellipse centred above the table, and a stop position is a
+ * fraction of the ray from that centre to the ending shape — so a stop lands
+ * at the centre plus that fraction of the vertical radius. Both come out of
+ * the stylesheet; this is only the arithmetic that turns them into a place on
+ * the screen.
+ */
+export function radialStopEdge(centrePercent: number, radiusPercent: number, stopFraction: number): number {
+  return centrePercent + radiusPercent * stopFraction
+}
+
 export interface Stage {
   /** The wordmark line across the top. */
   readonly eyebrowHeight: number
@@ -170,4 +201,20 @@ export function overscanPixels(stage: Stage, safeHeight: number): number {
 /** What the table is actually given, once everything else has taken its share. */
 export function tableHeight(stage: Stage, safeHeight: number): number {
   return safeHeight - stage.eyebrowHeight - stage.tableGap - stage.peopleHeight
+}
+
+/**
+ * Where the first line of chips begins, measured from the top of the screen
+ * rather than from the top of the safe area.
+ *
+ * This exists because of the lamp. The eight person colours are measured
+ * against whatever is brightest under a chip, and the bright step of the
+ * light pool is bright enough to take three of them under 4.5:1 — so where
+ * that step stops is a layout constraint, not a decoration. It is a
+ * percentage of the *screen*, because a gradient on `body` resolves against
+ * the viewport and knows nothing about the safe area, which is why this is
+ * the one measurement in this module taken from the screen's own edge.
+ */
+export function peopleTopEdge(stage: Stage, inset: number, table: number, rowGap: number): number {
+  return inset + stage.eyebrowHeight + stage.tableGap + table + rowGap
 }
