@@ -4,20 +4,36 @@
   //
   // Both existing guards read the built bundle: one parses it with an ES2017
   // grammar, the other measures it. Neither can see a *runtime* API, because
-  // `Object.fromEntries`, `Array.prototype.flat`, `String.matchAll` and
-  // `globalThis` are identifiers, not syntax — they survive the bundler
+  // `Object.fromEntries`, `Array.prototype.flat`, `String.prototype.matchAll`
+  // and their kind are identifiers, not syntax — they survive the bundler
   // untouched, parse cleanly as ES2017, and then throw on Chromium 68 in
   // somebody's living room. The root configuration offers every workspace
-  // `lib: ES2022`, so all four would have typechecked.
+  // `lib: ES2022`, so all of them typechecked.
   //
-  // `lib` is what closes that. The root program excludes `apps/tv/src` and
-  // `npm run typecheck` runs this project as well, so the screen's own
-  // sources are checked exactly once, here.
+  // `lib` is what closes that, for ECMAScript builtins. Verified against
+  // `Object.fromEntries`, `Array.prototype.flat`, `String.prototype.matchAll`,
+  // `String.prototype.replaceAll` and `Array.prototype.at`: every one is a
+  // TS2550 here and silent under the root configuration.
   //
-  // What this does not cover: `lib.dom.d.ts` has no version axis, so a DOM
-  // API newer than the target is still invisible to the compiler. The bundle
-  // that exists today uses nothing of the sort, and DOM additions are for now
-  // a matter of review rather than of tooling.
+  // The root program excludes `apps/tv/src` and `npm run typecheck` runs this
+  // project as well, so the screen's own sources are checked exactly once,
+  // here. `scripts/typecheck-projects.test.ts` fails if either half of that
+  // arrangement is dropped, or if this `lib` is widened.
+  //
+  // What this does NOT cover, and what no automated check in this repository
+  // covers:
+  //
+  //   - `globalThis`. TypeScript supplies it regardless of `lib`, so it is
+  //     silent here exactly as it is under the root configuration — confirmed
+  //     by probing `tsc --target ES2017 --lib ES2017,DOM,DOM.Iterable`
+  //     directly, as a value and as a type. It arrived in Chrome 71 and the
+  //     declared floor is Chromium 68, so it is a real hazard on the oldest
+  //     televisions claimed as supported. Nothing catches it. Review does.
+  //   - DOM APIs. `lib.dom.d.ts` has no version axis, so a DOM API newer than
+  //     the target is invisible to the compiler.
+  //
+  // The bundle that exists today uses neither, but the guarantee here is
+  // "ECMAScript builtins", and it should not be read more widely than that.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
