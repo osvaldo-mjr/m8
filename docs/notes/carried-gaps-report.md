@@ -1,6 +1,12 @@
 # Twelve carried gaps — closing report
 
-Working note, not a spec. Branch `main`, nothing pushed.
+Working note, not a spec. Branch `main`.
+
+Written in two passes: the first section covers the twelve carried gaps, the
+second the review that followed it. Anything it says about the state of the
+working tree describes the moment of writing, not the moment of reading — the
+branch is expected to be pushed once the review is closed, and a note whose
+subject is claims that stopped being true should not add one.
 
 ## Starting and finishing state
 
@@ -320,4 +326,210 @@ hand, will.
   real handshake; `/nope` 404.
 - `docker stop` — 0.27 s, exit code 0.
 
-Nothing pushed. `git status` is clean.
+At the time of writing: nothing pushed, `git status` clean.
+
+---
+
+# Review follow-up — seven findings
+
+Second pass, after review of the batch above. Same rules: nothing pushed at the
+time of writing.
+
+State after this pass: **329 tests in 28 files**, typecheck clean across all
+three projects, both large-screen guards green, bundle unchanged at
+**15 995 B gzipped** against an 18 900 B budget, image 222 MB, container built
+and served.
+
+## 1. `apps/tv/tsconfig.json` claimed a guarantee it does not provide
+
+**The finding is correct and it was the worst thing in the batch.** The comment
+listed `globalThis` among the APIs `lib` closes, and confined the "does not
+cover" paragraph to the DOM. `globalThis` arrived in Chrome 71; the declared
+floor is Chromium 68. The file written to close a class of gap asserted it had
+closed an instance it had not.
+
+**Reproduced independently** rather than taken on trust, with the repository's
+own compiler and a scratch file outside the project:
+
+```
+tsc --ignoreConfig --noEmit --target ES2017 --lib ES2017,DOM,DOM.Iterable --strict probe.ts
+```
+
+- `export const a = globalThis`, `export type G = typeof globalThis`, and
+  `globalThis` in a cast: **silent**, as a value and as a type.
+- Control, same flags, `Object.fromEntries`: `TS2550`.
+
+**Changed.** `globalThis` is out of the closed list. The file now carries an
+explicit "what this does not cover, and what no automated check in this
+repository covers" section naming `globalThis` first, with the Chrome 71
+against Chromium 68 arithmetic, the fact that it is silent here exactly as it
+is under the root configuration, and the plain sentence that nothing catches it
+— review does. DOM APIs follow it. The list of what `lib` *does* close now
+names only the five verified against it.
+
+## 2. Nothing pinned `tsc -p apps/tv`
+
+**Correct, and the consequence was worse than the state before the split.**
+With `apps/tv/src` excluded from the root program, deleting `&& tsc -p apps/tv`
+leaves the large screen typechecked by nothing: `vite build` does not
+typecheck, and neither does vitest.
+
+**New:** `scripts/typecheck-projects.ts` (pure) and
+`scripts/typecheck-projects.test.ts`, following the `scripts/node-version.ts`
+precedent — parsing separated from disk, then the real files asserted to agree.
+`projectsIn` reads `tsc -p` and `tsc --project` out of a command;
+`runsRootProgram` distinguishes a bare `tsc`; `newestEcmaScriptLib` reduces a
+`lib` list to a year, handling `ESNext` as infinity and `ES6` as 2015.
+
+Rather than pinning the TV alone, the real-file assertions generalise: every
+app that has its own `tsconfig.json` is discovered on disk, and each must be
+both **run by the typecheck script** and **excluded from the root program**.
+Item 7's new phone project was picked up by it without a line being added.
+
+**Evidence,** each restored afterwards:
+
+- `typecheck` set to `tsc --noEmit && tsc -p apps/phone` gives
+  `× runs apps/tv from the typecheck script`.
+- `apps/tv` `lib` widened to `ES2022` gives
+  `× names no ECMAScript library newer than ES2017`,
+  `AssertionError: expected 2022 to be 2017`.
+
+**A dependency I had to write rather than borrow.** These files are JSONC —
+they carry the comments that explain them — so the test cannot use
+`JSON.parse`. TypeScript used to expose `parseConfigFileTextToJson` for exactly
+this, but the native compiler in this repository (7.0.2) publishes only
+`version` and `versionMajorMinor` from its JavaScript package; there is no
+parser to borrow. So `scripts/jsonc.ts` is a hand-written comment stripper,
+about twenty lines, in the spirit of the hand-written wire validator, with its
+own tests covering the cases that make it worth writing: a double slash inside
+a string value, a block-comment opener inside a string value, and an escaped
+quote not ending a string. Trailing commas are deliberately *not* handled, and
+the file says so — none of the files it reads use them, and quietly accepting
+more than is tested is how a parser starts lying.
+
+## 3. Nothing proved the container starts
+
+**Correct, and the exposure is real.** Nothing in `apps/server/src` imports
+`tsx`, so moving it back to `devDependencies` reads as a correct tidy-up.
+
+**Measured, by actually doing it.** With `tsx` in `devDependencies` and the
+lock regenerated:
+
+- `npm run typecheck` — clean.
+- `npm test` — **329 passed**.
+- `docker build` — succeeded.
+- The container — died at start:
+  `Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tsx' imported from /app/`.
+
+Every gate green, artifact dead.
+
+**New CI step,** in the `docker` job after the build: run the image, poll `/`
+for up to thirty seconds, print the container's logs and fail if it never
+serves, and `grep` the body for the large screen's own title — asserting the
+screen was built into the image and is being served, not merely that something
+answered the port.
+
+**Evidence.** The step's logic was run locally against both images. Against the
+`devDependencies` build: never served, logs showing `Cannot find package
+'tsx'`. Against the real image: served, 200, title present, and `/KXTP` plus
+the phone's own bundle both 200.
+
+**`tsx` was restored to `dependencies`,** and `apps/server/package.json` and
+`package-lock.json` are byte-identical to before the experiment — verified with
+`git diff`, which reports nothing for either.
+
+## 4. The manifest guard was blind to the next workspace
+
+**Correct on both counts.** It walked a hardcoded `['packages', 'apps']` while
+`package.json` declares `packages/games/*`, which is where the design puts the
+first game — so the first game workspace would have reopened the very gap the
+guard closes. And `toBeGreaterThanOrEqual(7)` against eight workspaces passes
+after losing one, which is the entire failure mode.
+
+**Changed.** `scripts/workspaces.ts` derives the list from the declared
+`workspaces` patterns: `expandWorkspacePatterns` handles a literal path and a
+`parent/*`, and contributes nothing for a parent that does not exist yet,
+because `packages/games/*` is declared before any game exists.
+
+The guard-the-guard is no longer a threshold. `lockfileWorkspacePaths` reads
+every workspace directory npm itself recorded in `package-lock.json` — a second
+source maintained by a different tool, in the repository, needing no
+`node_modules` — and the derived list must **equal** it. One workspace going
+missing on either side now fails.
+
+**Evidence.** A real `packages/games/tic-tac-toe` workspace was created and
+`npm install --package-lock-only` run, so both sources knew about it. Result:
+the guard-the-guard passed (the two lists agreed) and exactly one case failed —
+`× copies the manifest of packages/games/tic-tac-toe before npm ci`. That is
+the failure the old guard could not produce. The workspace and the lockfile
+were then removed and restored.
+
+## 5. The README stated two false numbers
+
+**Corrected:** 260 to **329** tests, 15,941 to **15,995** bytes. The sentence
+about the image was also updated, since it claimed CI checks the clone-and-run
+promise by building — which, as finding 3 established, it did not. It now says
+the image is built, started, and requested against.
+
+## 6. The note contradicted itself
+
+**Corrected.** The header now says the note describes the working tree at the
+moment of writing and not at the moment of reading, states that the branch is
+expected to be pushed once review closes, and gives the reason plainly: a note
+whose subject is claims that stopped being true should not add one. The closing
+line of the first pass reads "At the time of writing: nothing pushed,
+`git status` clean."
+
+## 7. The phone had the TV's host-versus-container divergence
+
+**Correct, and it was not theoretical — it was measurable.** Vite's transform
+reads the nearest `tsconfig.json`. The phone had none, so it found the
+repository root configuration on a development machine and nothing at all
+inside the container, which copies workspace sources but not the root program.
+
+**Evidence, before the fix.** An image built with `apps/phone/tsconfig.json`
+temporarily removed produced `apps/phone/dist/assets/index-BSxAXPRy.js`, while
+the same commit on the host produced `index-UOnEOO25.js`. Different content
+hash, same source: the phone bundle in the production-equivalent artifact was
+not the phone bundle anyone had tested. In the same image the *TV* bundle was
+`index-DE5f1P8v.js`, identical to the host's, because the TV already had its
+own project — the contrast is the finding in one line.
+
+**After the fix,** the container serves `/phone/assets/index-UOnEOO25.js`,
+matching the host.
+
+**Changed.** `apps/phone/tsconfig.json` extends the same base, is excluded from
+the root program, and is run by `npm run typecheck` like the TV's. Its `lib` is
+deliberately *not* narrowed — the phone runs on a phone browser somebody is
+holding, not a television from 2020 — and the file says so, so the next reader
+does not take the TV's constraint for a house style. No Dockerfile change was
+needed: `tsconfig.base.json` already travels with the image from the earlier
+fix, and `COPY apps ./apps` brings the new file.
+
+The class rather than the instance: the arrangement test from finding 2
+discovers app projects from disk, so a third one will be held to the same two
+rules without an edit.
+
+## Carried, by agreement
+
+The remaining Minor findings stay open and unaddressed: the gzip-coincidence
+sentence in this note, the `tailwindcss/colors` hoisting assumption, the
+duplicated TV aliases between `vite.config.ts` and `tsconfig.json`, the
+manifest test's name promising ordering it does not check, test files shipping
+in the runtime image, and the absence of a shadowing guard for the phone's
+Tailwind v4 theme.
+
+## Verification run for this pass
+
+- `npm run typecheck` — clean; `tsc --noEmit && tsc -p apps/tv && tsc -p apps/phone`.
+- `npm test` — **329 passed, 28 files, 0 failed** (was 294 in 25).
+- `npm run guards` — `ES2017 syntax check passed for 1 file(s).`,
+  `Total: 15995 B gzipped. Budget: 18900 B.` Unmoved.
+- `docker build` — 222 MB, unchanged.
+- Container started and requested against: `/` 200 with the large screen's
+  title, `/KXTP` 200, `/phone/assets/index-UOnEOO25.js` 200.
+- Probe images (`m8:tsxprobe`, `m8:nophonetsconfig`) and their containers
+  removed.
+
+All seven addressed. Nothing carried out of this pass except the Minor findings
+listed above as agreed.
