@@ -799,3 +799,368 @@ workers and reports zero tests, per the known environment defect):
 - `npm run guards` — ES2017 syntax check passed; Chromium 68 CSS check
   passed; size **38,172 B** against the 42,000 B ceiling (up 7 B from 38,165 B
   — the `calc(25% - 1px)` bytes, gzipped).
+
+---
+
+# The television round — what the owner saw on a real set, and what changed
+
+Written 2026-08-21, after the identity above was pushed and then looked at on
+an actual television rather than on a monitor. At the moment of writing the
+working tree holds only the changes described here, against `1386d74`. Every
+figure below was measured on this machine on that date — in the container, in
+a real Chromium driven over the DevTools protocol, or by the arithmetic in
+`scripts/tv-safe-area.test.ts`. Nothing here is recalled.
+
+Three criticisms, all of them right:
+
+1. **"It doesn't look like a table."** Nothing said the pieces were *on*
+   anything. They were white rectangles over a coloured rectangle.
+2. **"The codes are all turned the same way — it should be more scattered."**
+   A real defect, not taste. See below.
+3. **"I don't like the blue-violet; something more real for a room and a
+   table."**
+
+## The palette is now a room and a tabletop
+
+`packages/tokens/tokens.css`, which is still the only file in the repository
+where a colour is written down.
+
+| Token | Was | Is | What it is |
+|---|---|---|---|
+| `--m8-ground` | `#180a3a` | **`#1c1614`** | a warm near-black: a room at night |
+| `--m8-table` | `#3b1b99` | **`#b44a32`** | terracotta: a painted tabletop |
+| `--m8-table-edge` | — | **`#7a2e1d`** | the front face of that tabletop |
+| `--m8-shadow` | — | **`rgba(45, 18, 10, 0.45)`** | what a piece casts on the table |
+| `--m8-paper` | `#fff6ec` | unchanged | pieces and the QR, never a panel |
+| `--m8-ink` | `var(--m8-ground)` | unchanged | and so it followed the room |
+
+`--m8-ink` needed no edit at all: it was already a reference to `--m8-ground`
+rather than a copy of it, so the character printed on a tile became the new
+room colour the moment the room did. That is the whole argument for the
+no-second-copy rule, arriving on schedule.
+
+**The "no neutral surface" rule still holds.** A warm dark room is the room,
+not a grey card under content. `--m8-paper` still appears only as the code
+tiles and the QR.
+
+### The eight person colours, measured against the new ground
+
+They were chosen against violet, so they were re-checked rather than assumed.
+WCAG relative-luminance contrast ratios, computed on this machine:
+
+| | Colour | On the old ground `#180a3a` | **On `#1c1614`** | On the table `#b44a32` |
+|---|---|---|---|---|
+| 1 | `#ff5b4a` coral | 5.99 | **5.83** | 1.73 |
+| 2 | `#2bd9e4` cyan | 10.63 | **10.35** | 3.06 |
+| 3 | `#c6f24e` lime | 14.18 | **13.81** | 4.09 |
+| 4 | `#ff63c1` pink | 6.83 | **6.65** | 1.97 |
+| 5 | `#ffb020` amber | 10.04 | **9.78** | 2.90 |
+| 6 | `#9b7bff` violet | 5.83 | **5.68** | 1.68 |
+| 7 | `#3dd68c` green | 9.79 | **9.53** | 2.82 |
+| 8 | `#4c8dff` blue | 5.74 | **5.59** | 1.65 |
+
+The new ground is very slightly lighter than the old one, so every ratio fell
+by about 0.2 — and the worst of the eight, blue at **5.59:1**, still clears
+the 4.5:1 threshold for normal text and is nearly twice the 3:1 threshold for
+the large type and solid discs these colours are actually used as. **No
+replacement is proposed.** Nothing about the change makes any of the eight
+read worse; if anything they read better, because a warm near-black is a
+quieter ground for a saturated hue than a saturated violet was.
+
+Two other figures, for the record: `--m8-paper` on the new table is **4.95:1**
+and on the new ground **16.73:1**, and the table on the ground is **3.38:1** —
+enough that the tabletop reads as a separate object without competing with the
+pieces on it.
+
+**One place where the table colour does constrain a person colour, on the
+phone.** The brief's premise — the chips sit on the room, so the table does
+not constrain them — is true of the television. It is not quite true of the
+phone: `apps/phone/src/App.tsx` draws the avatar picker as tiles on the table
+colour and fills the *chosen* one with that person's colour. Coral on
+terracotta is 1.73:1, and coral is what the first person to join always gets.
+Checked in a real browser at 390×844 rather than argued about: the chosen tile
+does still read as chosen, because the two differ in lightness and saturation
+rather than only in hue, and the tile is large. It is weaker than it was
+against violet, it is recorded here as a known weak case, and it was not
+changed — inventing a new selection treatment for the phone is outside a
+directed revision of the television.
+
+## The scatter: what was wrong, and how the fix is constructed
+
+`apps/tv/src/tilt.ts` is no longer only about tilt.
+
+**What was wrong.** Every piece was turned by 2 to 4 degrees, drawn
+independently from the hash. That is ten distinct angles: mathematically
+distinct, visually indistinguishable at three metres. Worse, **only rotation
+varied** — the four tiles sat on one baseline, evenly spaced, which is not
+what objects dropped on a table do.
+
+Widening the range alone would not have fixed it. An independent draw from a
+wide range still lands two neighbours a tenth of a degree apart often enough
+to be exactly what somebody sees; distinctness *on average* is what produced
+the defect in the first place, and the average is not what anybody looks at.
+
+**What was done.** Three things vary now, and the difference between
+neighbours is constructed rather than hoped for.
+
+| | Range | Values | Enforced between neighbours |
+|---|---|---|---|
+| angle | ±3° to ±8°, in half degrees | 22 | **≥ 3°** |
+| lift | −3 to +3 steps of `--m8-scatter-step` | 7 | **≥ 2 steps** |
+| gap after a piece | 0 to 3 steps added to `--m8-piece-gap` | 4 | **≥ 1 step** |
+
+The mechanism is one function, `apart(values, previous, minimum)`: a piece is
+chosen only from those values far enough from the piece before it, and the
+hash then indexes into what survives. Every range is wide enough that
+something always does — an angle keeps at least fifteen of twenty-two, a lift
+at least four of seven, a gap at least three of four — so there is no retry
+loop, no failure mode and no bias towards a fallback. Because the guarantee is
+about *neighbours*, placement became a whole-table function,
+`arrangePieces(code, pieceCount)`, rather than one call per piece.
+
+Everything that made the old tilt good survives, and is still asserted: it is
+a pure function of the table code, so the same table always arranges itself
+the same way across every redraw, changing one character rearranges it, and
+over a 900-code sample more than 90% of tables get a distinct arrangement. The
+table itself and the row of people stay rigid — that contrast is what sells
+the scatter, and `render.test.ts` still pins it.
+
+`apps/tv/src/tilt.test.ts` was rewritten around the new shape: the three
+ranges, that no piece is ever square, that every magnitude, every height and
+every gap width is used, the three neighbour-separation properties asserted
+over all 4,500 placements of the 900-code sample, a guard that the pair list
+is not empty (an empty list would pass all three vacuously), determinism,
+one-character sensitivity, the 90% spread, and the exact strings handed to the
+stylesheet.
+
+**Lengths stay in the stylesheet.** The module cannot know which of the two
+size tiers is in force, so a lift is emitted as
+`translateY(calc(var(--m8-scatter-step) * N))` and a gap as
+`calc(var(--m8-piece-gap) + var(--m8-scatter-step) * N)`. The transform order
+is load bearing and is pinned by a test: transforms apply right to left, so
+the piece is turned first and then moved in the table's own axes — written the
+other way round, a lifted piece would also drift sideways by the sine of its
+own angle.
+
+**The QR has its own, smaller step** (`--m8-qr-scatter-step`, 3px and 4px
+against the tiles' 6px and 10px). It is the largest thing on the table, so its
+turned and lifted bounding box is what sets the least height the table can be
+drawn in; and it lies alone rather than in a row, so there is no shared
+baseline for it to break out of. A lift as large as a tile's would have cost
+the row of people real space and bought nothing anybody in the room can see.
+This is a deliberate departure from "add vertical offset per piece" as
+written, made because the brief's own hazard warning — the QR's rotated
+bounding box — is what the arithmetic runs into first.
+
+## The table is furniture now: a shadow under each piece, and a visible edge
+
+Two additions, both in `apps/tv/src/styles.css`.
+
+**Shadows.** `.m8-tile` and `.m8-qr` each carry
+`box-shadow: 0 var(--m8-shadow-lift) var(--m8-shadow-blur) var(--m8-shadow)`.
+This is the point of the whole round: *turned and shadowed* reads as an object
+dropped on a table, *turned alone* reads as a layout mistake. The shadow
+rotates with the piece, which means the light technically turns with it too —
+at these angles and this blur nobody sees that, and the alternative is a
+second element per tile on a screen whose weight is the point. The blur is
+deliberately modest, 9px at 1280 and 14px at 1920: a television GPU pays for a
+large one, and it is composited under a rotated element.
+
+**A visible thickness.** `.m8-table` carries
+`border-bottom: var(--m8-table-thickness) solid var(--m8-table-edge)` — 14px
+at 1280, 22px at 1920. A border rather than a second element: `border-radius`
+curves it round the bottom corners so it reads as one slab seen edge-on, and
+nothing can come apart from anything else when the table grows or shrinks. It
+is inside the element's box under `box-sizing: border-box`, so it is height
+the pieces do not get, and the geometry model charges it as such rather than
+assuming the surface is the whole box.
+
+Both are Chromium 10 features. Neither trips the CSS guard, which passed.
+
+### What they cost, measured
+
+Each measured by removing exactly that feature — its rules, its size tokens
+and its colour token — rebuilding, and reading the guard's own gzipped figure:
+
+| | Gzipped bytes |
+|---|---|
+| The two shadows | **60 B** |
+| The table edge | **43 B** |
+| Everything else in this round (stylesheet) | 84 B |
+| **Stylesheet total** | **187 B** (2,031 → 2,218) |
+| The arrangement module (JavaScript) | **345 B** (14,857 → 15,202) |
+| **Bundle total** | **532 B** (38,172 → 38,704) |
+
+The ceiling **did not move**: 42,000 B, with 3,296 B of headroom.
+
+## What the geometry cost, and how the proof was extended
+
+Wider angles, per-piece lifts and a table with thickness all take height from
+the same place, and the QR's rotated bounding box was already the tightest
+thing on the screen — it overhung the surface by 15px at 1920 and 9px at 1280
+before the previous round squeezed it back. So this was not a free change, and
+the price is written down here rather than discovered later:
+
+- **`--m8-qr-size` fell from 380px to 320px at 1920, and from 232px to 208px
+  at 1280** — 16% and 10%, and now the same 16.7% and 16.3% of the screen
+  width at both tiers rather than 19.8% and 18.1%. That is what paid for the
+  wider tilt, the lifts and the table's edge. The QR is still roughly 19cm on
+  a 55" set, a large target for a phone camera at two metres.
+- **`--m8-piece-gap` grew from 20px to 24px at 1280 and from 26px to 40px at
+  1920.** Two neighbouring tiles turned in opposite directions reach towards
+  each other by their corners, up to `tiltedExtent(size) - size`, which is
+  29px at 1920 with an 8-degree tilt. A gap narrower than that lets two tiles
+  touch, which is the one way this scatter can look like a bug rather than a
+  table.
+- **`.m8-address`'s margin is now `calc(var(--m8-row-gap) + var(--m8-scatter-step) * 2)`**
+  rather than a bare `--m8-row-gap`. A tile at the bottom of its range has
+  dropped by its full lift *and* thrown a corner down *and* casts a shadow
+  below that; without the extra steps the lowest tile's shadow landed on the
+  address line.
+
+`scripts/tv-safe-area.ts` gained four functions, and the module is no longer
+purely vertical — the scatter added a sideways claim:
+
+- `tiltOverhang(size, degrees)` — how far a turned square reaches past its own
+  edge on one side. Used twice: against the gap between two tiles, and against
+  the drop onto the address line.
+- `scatteredExtent(size, degrees, lift)` — a turned square plus the room its
+  lift can take it in *either* direction, so a lift costs twice what it moves.
+- `surfaceHeight` / `surfaceContentHeight` — the table's box against the
+  surface left inside it once the edge band is taken off.
+- `rowExtent(sizes, gaps, degrees)` — how wide a row of turned pieces reaches
+  end to end. A transform does not change what a flex row measures, so the row
+  is the untilted boxes and the gaps, plus the corner each end piece throws
+  outwards.
+
+`scripts/tv-safe-area.test.ts` now sweeps **every half-degree of the tilt
+range** — not only the largest, because "the biggest angle is the worst case"
+is exactly the sort of claim that stops being true when a piece changes shape
+— at both 1280×720 and 1920×1080, and asserts:
+
+1. the QR, turned and lifted, fits inside the table's *surface* (the box less
+   the edge band);
+2. the code block, turned and lifted, fits the same surface — charged twice
+   its overhang and twice its lift, because the block is centred by its layout
+   box and a transform does not move that box;
+3. the pieces fit sideways: four tile boxes, three gaps at their widest, the
+   block margin and the QR's turned extent, inside the safe width;
+4. `--m8-piece-gap` is at least twice a tile's corner overhang, so no two
+   tiles can touch;
+5. the lowest tile, its corner and its shadow all clear the address line;
+6. the shadow a piece casts stays on the table rather than falling off its
+   lower edge onto the room;
+7. the stylesheet still declares the edge band and both shadows in the form
+   the arithmetic assumes — because a model that charges for space nothing
+   takes is measuring a layout that no longer exists.
+
+It reads the tilt module's four constants out of its source text rather than
+importing them, the way it already read `TILT_MAX_DEGREES`: `apps/tv/src` is
+deliberately typechecked only against the libraries a 2020 television has, and
+importing it here would pull it into the root program too. All four —
+`TILT_MIN_DEGREES`, `TILT_MAX_DEGREES`, `MAX_LIFT_STEPS`, `MAX_SPACE_STEPS` —
+are load bearing now, not just the angle: a lift costs the table height and a
+wider gap costs it width.
+
+The slack that came out of all this, at eight participants, which is the worst
+case:
+
+| | 1280×720 | 1920×1080 |
+|---|---|---|
+| Table box | 332px | 500px |
+| Surface, once the edge band is off | 318px | 478px |
+| What the QR needs, turned 8° and lifted | 291.6px | 444.2px |
+| Slack | **26.4px** | **33.8px** |
+| Shadow reach below a piece | 8.5px | 14px |
+| Slack per side | 13.2px | 16.9px |
+
+## One test changed, deliberately
+
+`render.test.ts`'s `expect(piece.style.transform).toMatch(/^rotate\(-?\d/)`
+became `/^translateY\(calc\(var\(--m8-.*\)\) rotate\(-?\d/`. The assertion was
+not weakened — it is stricter, because it now pins the transform *order* as
+well, which is the thing that would silently make a lifted piece drift
+sideways. It had to change at all because the transform carries more than an
+angle now, and the test says so where it stands.
+
+Three assertions were added beside it: that the QR uses
+`--m8-qr-scatter-step` while the tiles use `--m8-scatter-step`, that the four
+tiles are not evenly spaced and the last tile's margin is left to the
+stylesheet, and — in `tv-safe-area.test.ts` — the stylesheet facts for the
+edge band and both shadows.
+
+Everything the previous rounds pinned still holds, unchanged and still
+passing: a disconnected participant renders visibly differently with the word
+`RECONNECTING` in that person's own colour, a nickname is text and never
+markup, a participant with no nickname renders a placeholder, nothing
+interactive is rendered anywhere, the QR `<img>` is reused across renders, a
+departure neither desynchronises the colours nor replays the arrival animation
+for survivors, and the chip cap keeps eight sixteen-character names inside the
+safe area.
+
+## Verified
+
+Through PowerShell, because the sandboxed Bash tool still kills every vitest
+worker and reports zero tests — a known environment defect, not a suite
+failure.
+
+- `npm test` — **568 passed, 33 files** (476 before; the growth is mostly the
+  per-half-degree sweep, which is 44 parameterised cases at each of the two
+  resolutions).
+- `npm run typecheck` — clean across all three projects.
+- `npm run guards` — ES2017 syntax check passed; Chromium 68 CSS check passed;
+  size **38,704 B** against the unchanged **42,000 B** ceiling.
+- `docker compose up --build -d` — built, running, serving the large screen.
+- The container driven with headless Chromium over the DevTools protocol and
+  real Socket.IO clients, and inspected as pictures rather than as markup.
+
+**What the screen actually looked like.** At 1920×1080 with eight people at
+sixteen-character nicknames: the table reads as a slab — terracotta top, a
+darker band along its lower edge — with four tiles lying on it at visibly
+different angles, at visibly different heights, with unequal gaps, each
+casting a soft shadow onto the terracotta, and the QR turned the other way
+beside them. Measured in the same run: the pieces sat 36px from the top of the
+surface, 46px from its lower edge and 101px and 104px from its sides; the row
+of people took two lines with the last chip's bottom edge exactly on the safe
+line and never past it; no document scroll. At 1280×720 the same picture, at
+27, 33, 106 and 108px. With one person dropped, their disc emptied to a lime
+outline and `RECONNECTING` appeared under their name in the same lime, legible
+against the warm near-black.
+
+**Does the scatter read as scattered?** Yes, and it was checked across six
+different table codes rather than one. A representative four, as the
+stylesheet received them (angle/lift per tile, then the three gaps in steps):
+
+```
+A2DK   -8.0°/0   +8.0°/+3   -7.5°/0    +5.0°/-3     gaps +0 +1 +0
+A3VY   +3.0°/-3  -5.0°/+2   +7.0°/-2   -6.0°/+1     gaps +3 +0 +2
+A4P9   -4.0°/-2  +6.0°/+1   -7.0°/-3   +3.0°/+2     gaps +0 +3 +2
+AEVF   -7.0°/+3  +6.0°/-1   -5.0°/+3   +8.0°/+1     gaps +0 +2 +3
+```
+
+No two of the six looked alike, and none looked like a row of tiles turned the
+same way. An earlier draft of this round used five lift values with the same
+separation rule and produced a visible zigzag — every table alternating
+between two heights, which is the original complaint in a different costume.
+That is why the lift range is seven values rather than five. It was found by
+looking at a picture, not by a test.
+
+## Not verified, and still open
+
+- **Nothing from *this* round has been on a real television.** The owner saw
+  the previous identity on a set; everything above was measured in Chromium on
+  a PC. `docs/tv-smoke-test.md` step 11 was rewritten for the wider scatter
+  and a step 14 added for the shadows and the table edge; both are unrun.
+- **`box-shadow` and `transform: rotate()` on the same element** are
+  documented as supported on Chromium 68 and are not confirmed by experiment
+  on the target hardware. A set that dropped either would leave the tilt
+  reading as a layout mistake, which is why step 14 says what to look for.
+- **The QR is 16% smaller than it was** and has not been scanned from three
+  metres on a real set. It scanned from the rendered page in this run.
+- **The phone's avatar picker is the one place a person colour sits on the
+  table colour**, and coral on terracotta is 1.73:1. Recorded above; not
+  changed.
+- **The CSS guard is still a closed list**, the safe-area model still models
+  boxes rather than glyphs, `prefers-reduced-motion` still does nothing on the
+  oldest supported sets, nicknames outside Latin-1 still fall back to a system
+  font, and the baton still has no visual mark. All unchanged.

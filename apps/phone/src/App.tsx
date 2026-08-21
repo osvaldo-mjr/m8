@@ -142,7 +142,7 @@ export function App() {
           <div>
             <p className="m8-eyebrow text-xs">YOUR FACE</p>
             {/* The palette, not a grid of grey tiles: an unchosen face sits
-                on the table's own violet, and the chosen one is filled with
+                on the table's own terracotta, and the chosen one is filled with
                 this person's colour — the colour they are about to become on
                 the television. */}
             <div className="mt-3 grid grid-cols-3 gap-3">

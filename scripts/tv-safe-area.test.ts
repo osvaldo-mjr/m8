@@ -7,10 +7,15 @@ import {
   chipsPerRow,
   overscanPixels,
   peopleHeight,
+  rowExtent,
   rowsNeeded,
   safeArea,
+  scatteredExtent,
   stageHeight,
+  surfaceContentHeight,
+  surfaceHeight,
   tableHeight,
+  tiltOverhang,
   tiltedExtent,
 } from './tv-safe-area.js'
 
@@ -57,6 +62,34 @@ describe('a square lying on the table', () => {
 
   it('does not care which way it was turned', () => {
     expect(tiltedExtent(432, -4)).toBeCloseTo(tiltedExtent(432, 4))
+  })
+
+  it('throws the same corner out on each side', () => {
+    expect(tiltOverhang(100, 0)).toBeCloseTo(0)
+    expect(tiltOverhang(224, 8)).toBeCloseTo((tiltedExtent(224, 8) - 224) / 2)
+  })
+
+  it('costs twice what a lift moves it, because it may go either way', () => {
+    expect(scatteredExtent(224, 8, 0)).toBeCloseTo(tiltedExtent(224, 8))
+    expect(scatteredExtent(224, 8, 28)).toBeCloseTo(tiltedExtent(224, 8) + 56)
+    expect(scatteredExtent(224, 8, -28)).toBeCloseTo(scatteredExtent(224, 8, 28))
+  })
+})
+
+describe('the table as a slab', () => {
+  it('keeps the band along its lower edge out of what lies on it', () => {
+    expect(surfaceContentHeight(500, 22)).toBe(478)
+    expect(surfaceHeight(478, 22)).toBe(500)
+  })
+})
+
+describe('a row of pieces on the table', () => {
+  it('is as wide as the boxes, the gaps, and the corners the ends throw out', () => {
+    // A transform does not change what a flex row measures, so the layout is
+    // the untilted boxes and the gaps; the tilt only adds a corner at each
+    // end. Four 224px tiles with three 30px gaps is 986px squared up.
+    expect(rowExtent([224, 224, 224, 224], [30, 30, 30], 0)).toBeCloseTo(986)
+    expect(rowExtent([224, 224, 224, 224], [30, 30, 30], 8)).toBeCloseTo(986 + tiltOverhang(224, 8) * 2)
   })
 })
 
@@ -162,15 +195,38 @@ describe('the screen at every number of people the table holds', () => {
   const perRow = chipsPerRow(chipCapPercent)
   const insetRatio = Number.parseFloat(declaration(rule(tokens, ':root'), '--m8-safe-inset')) / 100
 
-  // `TILT_MAX_DEGREES` in `apps/tv/src/tilt.ts`. Not imported: `apps/tv/src`
-  // is deliberately typechecked only under its own project, with the
-  // libraries a 2020 television has, and importing it here would pull it into
-  // the root program as well. Asserted against the source instead, so the two
-  // cannot drift silently.
-  const maxTiltDegrees = 4
-  it('agrees with the tilt module about the largest angle a piece is turned', () => {
-    expect(tilt).toContain(`TILT_MAX_DEGREES = ${maxTiltDegrees}`)
+  /*
+   * The scatter, as `apps/tv/src/tilt.ts` declares it. Not imported:
+   * `apps/tv/src` is deliberately typechecked only under its own project,
+   * with the libraries a 2020 television has, and importing it here would
+   * pull it into the root program as well. Asserted against the source
+   * instead, so the two cannot drift silently — and every one of these is
+   * load bearing now rather than only the angle: a lift costs the table
+   * height and a wider gap costs it width.
+   */
+  const minTiltDegrees = 3
+  const maxTiltDegrees = 8
+  const maxLiftSteps = 3
+  const maxSpaceSteps = 3
+  it.each([
+    ['TILT_MIN_DEGREES', minTiltDegrees],
+    ['TILT_MAX_DEGREES', maxTiltDegrees],
+    ['MAX_LIFT_STEPS', maxLiftSteps],
+    ['MAX_SPACE_STEPS', maxSpaceSteps],
+  ])('agrees with the tilt module about %s', (name, value) => {
+    expect(tilt).toContain(`${name} = ${value}`)
   })
+
+  /**
+   * Every magnitude the tilt can take, in half-degree steps. The extent of a
+   * turned square grows with the angle over this whole range, so the largest
+   * is always the worst case — but the sweep runs the range rather than
+   * asserting that, because "the biggest angle is the worst one" is exactly
+   * the kind of thing that stops being true when somebody changes the shape
+   * of a piece.
+   */
+  const tiltMagnitudes: number[] = []
+  for (let degrees = minTiltDegrees; degrees <= maxTiltDegrees; degrees += 0.5) tiltMagnitudes.push(degrees)
 
   const screens = [
     { name: '1280x720', screen: { width: 1280, height: 720 }, sizes: base },
@@ -187,12 +243,48 @@ describe('the screen at every number of people the table holds', () => {
   describe.each(screens)('at $name', ({ screen, sizes }) => {
     const safe = safeArea(screen, insetRatio)
     const qrOuter = pixels(sizes, '--m8-qr-size') + pixels(sizes, '--m8-qr-padding') * 2
+    const tileSize = pixels(sizes, '--m8-tile-size')
+    const edgeHeight = pixels(sizes, '--m8-table-thickness')
+    const scatterStep = pixels(sizes, '--m8-scatter-step')
+    const qrScatterStep = pixels(sizes, '--m8-qr-scatter-step')
+    const tileLift = scatterStep * maxLiftSteps
+    const qrLift = qrScatterStep * maxLiftSteps
+    const widestGap = pixels(sizes, '--m8-piece-gap') + scatterStep * maxSpaceSteps
+    // `.m8-address` is two scatter steps further down than every other gap
+    // on this screen, which is what keeps the lowest tile's shadow off it.
+    const addressGap = pixels(sizes, '--m8-row-gap') + scatterStep * 2
+    // A box shadow's blur spreads about half its radius past the shadow's own
+    // edge, so this is how far below a piece the shadow actually reaches.
+    const shadowReach = pixels(sizes, '--m8-shadow-lift') + pixels(sizes, '--m8-shadow-blur') / 2
 
-    function stageFor(participants: number) {
+    /** The QR, turned and lifted as far as the scatter can take it. */
+    function qrNeeds(degrees: number): number {
+      return scatteredExtent(qrOuter, degrees, qrLift)
+    }
+
+    /**
+     * The code block: the tiles, turned and lifted, then the gap and the
+     * address line under them.
+     *
+     * The block is centred in the table by its *layout* box, which a
+     * transform does not change, so a tile thrown upwards out of that box
+     * needs the same room again at the bottom before the block would be
+     * pushed off centre. Hence twice the corner and twice the lift, even
+     * though only one tile can be at the top of its range at a time.
+     */
+    function codeBlockNeeds(degrees: number): number {
+      const layout = tileSize + addressGap + pixels(sizes, '--m8-address-type')
+      return layout + (tiltOverhang(tileSize, degrees) + tileLift) * 2
+    }
+
+    function stageFor(participants: number, degrees: number = maxTiltDegrees) {
       return {
         eyebrowHeight: pixels(sizes, '--m8-wordmark-type'),
         tableGap: pixels(sizes, '--m8-row-gap'),
-        tableMinHeight: tiltedExtent(qrOuter, maxTiltDegrees),
+        // The whole element: what lies on it at its most scattered, and the
+        // band along its lower edge, which is inside its box and is not
+        // surface anything may be drawn on.
+        tableMinHeight: surfaceHeight(Math.max(qrNeeds(degrees), codeBlockNeeds(degrees)), edgeHeight),
         peopleHeight: peopleHeight(
           rowsNeeded(participants, perRow),
           pixels(sizes, '--m8-disc-size'),
@@ -207,12 +299,56 @@ describe('the screen at every number of people the table holds', () => {
       expect(overscanPixels(stageFor(participants), safe.height)).toBeLessThanOrEqual(0)
     })
 
-    it('leaves the table room for the QR it carries, turned', () => {
+    it.each(tiltMagnitudes)('leaves the table room for the QR it carries, turned %s degrees', (degrees) => {
       // The other half of the same squeeze: once the table had been pushed to
-      // its content height, the QR's turned bounding box overhung the violet
-      // surface — 15px at 1920, 9px at 1280.
-      const room = tableHeight(stageFor(MAX_PARTICIPANTS), safe.height)
-      expect(room).toBeGreaterThanOrEqual(tiltedExtent(qrOuter, maxTiltDegrees))
+      // its content height, the QR's turned bounding box overhung the
+      // surface — 15px at 1920, 9px at 1280. Widening the tilt and lifting
+      // the pieces both make that worse, which is why the QR gave up 16% of
+      // its size in the same change.
+      const room = surfaceContentHeight(tableHeight(stageFor(MAX_PARTICIPANTS), safe.height), edgeHeight)
+      expect(room).toBeGreaterThanOrEqual(qrNeeds(degrees))
+    })
+
+    it.each(tiltMagnitudes)('keeps the code block on the table at %s degrees', (degrees) => {
+      const room = surfaceContentHeight(tableHeight(stageFor(MAX_PARTICIPANTS), safe.height), edgeHeight)
+      expect(room).toBeGreaterThanOrEqual(codeBlockNeeds(degrees))
+    })
+
+    it.each(tiltMagnitudes)('keeps the pieces inside the table sideways at %s degrees', (degrees) => {
+      // Sideways the table is the whole safe width, and the two things on it
+      // are the code block and the QR with the block margin between them.
+      // Every gap at its widest and every piece at its most turned.
+      const tiles = [tileSize, tileSize, tileSize, tileSize]
+      const across =
+        rowExtent(tiles, [widestGap, widestGap, widestGap], degrees) +
+        pixels(sizes, '--m8-block-gap') +
+        tiltedExtent(qrOuter, degrees)
+      expect(across).toBeLessThanOrEqual(safe.width)
+    })
+
+    it('keeps the gap between two tiles wider than the corners they throw at each other', () => {
+      // Two neighbours turned opposite ways reach towards each other by their
+      // corners. A gap narrower than both together lets them touch, which is
+      // the one way this scatter can look like a bug rather than a table.
+      // This is why widening the tilt also widened `--m8-piece-gap`.
+      expect(pixels(sizes, '--m8-piece-gap')).toBeGreaterThanOrEqual(tiltOverhang(tileSize, maxTiltDegrees) * 2)
+    })
+
+    it('keeps the lowest tile, and its shadow, clear of the address line', () => {
+      // A tile at the bottom of its range has dropped by its full lift and
+      // thrown a corner down as well, and the shadow reaches further still.
+      // If the three together exceeded the gap, the code would sit on the
+      // address — which is why that gap is two scatter steps wider than the
+      // others rather than sharing `--m8-row-gap` with everything else.
+      const reach = tileLift + tiltOverhang(tileSize, maxTiltDegrees) + shadowReach
+      expect(reach).toBeLessThan(addressGap)
+    })
+
+    it('keeps the shadow a piece casts on the table rather than off its edge', () => {
+      // A shadow that fell past the lower edge would be cast on the room, and
+      // the whole point of it is that the piece is resting on something.
+      const room = surfaceContentHeight(tableHeight(stageFor(MAX_PARTICIPANTS), safe.height), edgeHeight)
+      expect((room - qrNeeds(maxTiltDegrees)) / 2).toBeGreaterThanOrEqual(shadowReach)
     })
 
     it('keeps the chip as tall as its disc even when somebody has dropped', () => {
@@ -293,6 +429,28 @@ describe('the screen at every number of people the table holds', () => {
         expect(cap).toBeGreaterThanOrEqual(chipCapPercent)
         expect(Number(count) * cap).toBeLessThanOrEqual(100)
       }
+    })
+
+    it('gives the table a thickness that the arithmetic above charges for', () => {
+      // The band along the lower edge is what makes the table furniture
+      // rather than a colour. It is inside the element's box, so it is
+      // height the pieces do not get — if it were ever drawn some other way,
+      // `stageFor` would be charging for space nothing takes and the model
+      // would be measuring a layout that no longer exists.
+      const body = rule(styles, '.m8-table')
+      expect(declaration(body, 'border-bottom')).toBe(
+        'var(--m8-table-thickness) solid var(--m8-table-edge)',
+      )
+      expect(declaration(rule(tokens, ':root'), '--m8-table-edge')).toMatch(/^#[0-9a-f]{6}$/)
+    })
+
+    it.each(['.m8-tile', '.m8-qr'])('drops a shadow under %s', (selector) => {
+      // The tilt without a shadow reads as a layout mistake; with one it
+      // reads as an object put down on a surface. Both pieces carry it, and
+      // the colour comes from the tokens like every other colour does.
+      expect(declaration(rule(styles, selector), 'box-shadow')).toBe(
+        '0 var(--m8-shadow-lift) var(--m8-shadow-blur) var(--m8-shadow)',
+      )
     })
 
     it.each(['.m8-chip-name', '.m8-chip-note'])('truncates %s rather than widening', (selector) => {

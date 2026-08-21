@@ -66,22 +66,30 @@ when it is a network-profile problem.
    participant disconnected and then connected again.
 
 The steps below arrived with the visual identity and **have not been run on a
-real set yet**. Two self-hosted `woff2` files and a CSS `transform` are new
-demands on this browser generation; both are documented as supported on
-Chromium 68, and neither has an experiment behind it.
+real set yet**. Two self-hosted `woff2` files, a CSS `transform` and a
+`box-shadow` are new demands on this browser generation; all are documented as
+supported on Chromium 68, and none has an experiment behind it.
 
 10. Confirm the four code characters render in the wide, heavy face — they
     should be visibly wider and blacker than the address line beneath them. If
     they look like ordinary system type, the self-hosted font did not load and
     the fallback stack is drawing them.
-11. Confirm each code tile and the QR sit very slightly turned, while the
-    violet table itself and the row of people are square. If everything is
-    square, `transform: rotate()` is not being applied.
+11. Confirm each code tile and the QR sit turned — noticeably, from three
+    metres, not subtly — and at different heights, with unequal gaps between
+    the tiles, while the terracotta table itself and the row of people are
+    square. If everything is square, `transform: rotate()` is not being
+    applied; if the tiles are turned but all sit on one line, the
+    `translateY(calc(var(--m8-scatter-step) * N))` half is not.
 12. Watch the row of people while a phone joins: the arriving chip should pop
     once, and no chip already on screen should move or re-animate.
 13. With three or more people seated, confirm each has a visibly different
     colour, and that the colour on somebody's phone is the same as the colour
     of their chip on the television.
+14. Confirm each tile and the QR cast a soft shadow onto the terracotta, and
+    that the table carries a darker band along its lower edge. Both are what
+    make it a table rather than a coloured rectangle; a set that drops
+    `box-shadow` would leave the tilt reading as a layout mistake, and one
+    that drops the `border-bottom` would leave the table flat.
 
 ## What to record on failure
 

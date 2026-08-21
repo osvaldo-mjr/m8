@@ -257,12 +257,44 @@ describe('the code, drawn as four objects', () => {
     expect(root.textContent).toContain(ADDRESS)
   })
 
-  it('turns every tile and the QR, so they read as things put down', () => {
+  it('turns every tile and the QR, and lifts each off the row baseline', () => {
+    // The assertion used to be `/^rotate\(-?\d/`. It changed because the
+    // transform carries more than an angle now: turning alone was
+    // indistinguishable from three metres, so a piece is also lifted off the
+    // baseline the four tiles used to share. The order is part of what is
+    // pinned — transforms apply right to left, so the piece is turned first
+    // and then moved in the table's own axes.
     renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [] })
     const turned = [...tiles(), root.querySelector('.m8-qr') as HTMLElement]
     for (const piece of turned) {
-      expect(piece.style.transform).toMatch(/^rotate\(-?\d/)
+      expect(piece.style.transform).toMatch(/^translateY\(calc\(var\(--m8-.*\)\) rotate\(-?\d/)
     }
+  })
+
+  it('gives the QR its own, smaller step than the tiles have', () => {
+    // The QR is the largest thing on the table, so its turned and lifted
+    // bounding box is what sets the least height the table can be drawn in —
+    // and it lies alone, with no baseline to break out of. A lift as large as
+    // a tile's would cost the row of people real space and buy nothing.
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [] })
+    const qr = root.querySelector('.m8-qr') as HTMLElement
+    expect(qr.style.transform).toContain('var(--m8-qr-scatter-step)')
+    for (const tile of tiles()) expect(tile.style.transform).toContain('var(--m8-scatter-step)')
+  })
+
+  it('does not space the tiles evenly', () => {
+    // Objects scattered on a table are not equidistant. The gap after each
+    // tile is widened by a number of steps drawn from the code, and two
+    // neighbouring gaps are never the same width.
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [] })
+    const gaps = tiles().map((tile) => tile.style.marginRight)
+    // Three gaps: the last tile's margin is left to the stylesheet, which
+    // zeroes it so the block margin alone separates the code from the QR.
+    expect(gaps[3]).toBe('')
+    for (const gap of gaps.slice(0, 3)) {
+      expect(gap).toMatch(/^calc\(var\(--m8-piece-gap\) \+ var\(--m8-scatter-step\) \* \d\)$/)
+    }
+    expect(new Set(gaps.slice(0, 3)).size).toBeGreaterThan(1)
   })
 
   it('leaves the table itself square and the row of people aligned', () => {

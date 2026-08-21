@@ -13,20 +13,35 @@
  *
  * There is deliberately no neutral surface here: no white card, no grey
  * panel. `--m8-paper` is an object placed on the table (the code tiles, the
- * QR), never a background.
+ * QR), never a background. A warm dark room is not a neutral surface — it is
+ * the room, which is the thing the screen is pretending to be.
  *
  * Flat fills only. No gradient tokens: televisions apply their own colour
- * processing and gradients band badly on them.
+ * processing and gradients band badly on them. The one exception is the
+ * shadow below, which is not a fill.
  */
 :root {
-  /** The room behind the table. */
-  --m8-ground: #180a3a;
-  /** The lit surface things are laid out on. */
-  --m8-table: #3b1b99;
+  /** The room behind the table: a warm near-black, a room at night. */
+  --m8-ground: #1c1614;
+  /** The lit surface things are laid out on: a painted terracotta tabletop. */
+  --m8-table: #b44a32;
+  /**
+   * The front face of that tabletop — the band along its lower edge that
+   * gives it thickness. Darker than the surface and lighter than the room, so
+   * it reads as the same piece of furniture seen edge-on rather than as a
+   * shadow or as a hole in the picture.
+   */
+  --m8-table-edge: #7a2e1d;
   /** Pieces and the QR only. Never a panel. */
   --m8-paper: #fff6ec;
   /** Characters printed on a piece: the ground colour, on paper. */
   --m8-ink: var(--m8-ground);
+  /**
+   * What a piece casts on the table under it. Warm rather than neutral,
+   * because a grey shadow on terracotta reads as dirt; and translucent
+   * rather than a solid, so the surface stays one colour beneath it.
+   */
+  --m8-shadow: rgba(45, 18, 10, 0.45);
 
   --m8-person-1: #ff5b4a;
   --m8-person-2: #2bd9e4;

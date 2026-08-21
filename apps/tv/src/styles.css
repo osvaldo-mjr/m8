@@ -25,16 +25,44 @@
  *
  * Every size lives in a custom property, defined twice: once for a 1280-wide
  * screen and once for a 1920-wide one. Custom properties are Chromium 49.
+ *
+ * Four of them are new and worth naming here, because `apps/tv/src/tilt.ts`
+ * hands out multiples of them and cannot know which tier is in force:
+ *
+ *   - `--m8-scatter-step` is one unit of the vertical lift a code tile is
+ *     given, and one unit of the extra width a gap between two tiles may
+ *     have. `tilt.ts` emits `calc(var(--m8-scatter-step) * N)`.
+ *   - `--m8-qr-scatter-step` is the same unit for the QR, deliberately
+ *     smaller: the QR is the largest thing on the table, so its turned and
+ *     lifted bounding box is what sets the least height the table can be
+ *     drawn in, and it lies alone rather than in a row so there is no
+ *     baseline for it to break out of.
+ *   - `--m8-shadow-lift` and `--m8-shadow-blur` are how far a piece appears
+ *     to float above the surface. The blur stays modest on purpose: a
+ *     television GPU pays for a large one, and it is composited under a
+ *     rotated element.
+ *
+ * `--m8-qr-size` and `--m8-piece-gap` were both re-cut when the tilt widened.
+ * The QR gave up 16%, which is what paid for the wider angles, the lifts and
+ * the table's own thickness — see the arithmetic in
+ * `scripts/tv-safe-area.test.ts`. The gap grew because two tiles turned in
+ * opposite directions reach towards each other by up to `extent - size`
+ * pixels, and a gap narrower than that lets them touch.
  */
 :root {
   --m8-tile-size: 132px;
   --m8-tile-type: 88px;
   --m8-tile-radius: 14px;
-  --m8-piece-gap: 20px;
-  --m8-qr-size: 232px;
+  --m8-piece-gap: 24px;
+  --m8-scatter-step: 6px;
+  --m8-qr-scatter-step: 3px;
+  --m8-shadow-lift: 4px;
+  --m8-shadow-blur: 9px;
+  --m8-qr-size: 208px;
   --m8-qr-padding: 18px;
   --m8-qr-radius: 14px;
   --m8-table-radius: 32px;
+  --m8-table-thickness: 14px;
   --m8-block-gap: 72px;
   --m8-wordmark-type: 44px;
   --m8-eyebrow-type: 22px;
@@ -56,11 +84,16 @@
     --m8-tile-size: 224px;
     --m8-tile-type: 152px;
     --m8-tile-radius: 22px;
-    --m8-piece-gap: 26px;
-    --m8-qr-size: 380px;
+    --m8-piece-gap: 40px;
+    --m8-scatter-step: 10px;
+    --m8-qr-scatter-step: 4px;
+    --m8-shadow-lift: 7px;
+    --m8-shadow-blur: 14px;
+    --m8-qr-size: 320px;
     --m8-qr-padding: 26px;
     --m8-qr-radius: 22px;
     --m8-table-radius: 48px;
+    --m8-table-thickness: 22px;
     --m8-block-gap: 100px;
     --m8-wordmark-type: 64px;
     --m8-eyebrow-type: 30px;
@@ -174,10 +207,21 @@ img {
 }
 
 /*
- * The table: a flat, rigid, perfectly square surface, clearly lighter than
- * the room behind it. It is the one thing here that is never turned — the
- * contrast between a rigid surface and things casually put down on it is
- * what makes the arrangement read as real rather than as a filter.
+ * The table: a rigid, perfectly square surface, clearly lighter than the room
+ * behind it. It is the one thing here that is never turned — the contrast
+ * between a rigid surface and things casually put down on it is what makes
+ * the arrangement read as real rather than as a filter.
+ *
+ * The band along the lower edge is the front face of the tabletop, and it is
+ * the difference between a piece of furniture with height and a colour
+ * painted on the background. It is a `border-bottom` rather than a second
+ * element on purpose: `border-radius` curves it round the bottom corners, so
+ * it reads as the same slab seen edge-on, and one element cannot come apart
+ * from the other when the table grows or shrinks.
+ *
+ * With `box-sizing: border-box` that band is inside the table's box, so it is
+ * height that what lies on the table does not get. `scripts/tv-safe-area.ts`
+ * charges it accordingly rather than assuming the surface is the whole box.
  */
 .m8-table {
   flex: 1 1 auto;
@@ -186,6 +230,7 @@ img {
   justify-content: center;
   margin-top: var(--m8-row-gap);
   background-color: var(--m8-table);
+  border-bottom: var(--m8-table-thickness) solid var(--m8-table-edge);
   border-radius: var(--m8-table-radius);
 }
 
@@ -204,6 +249,19 @@ img {
  * the alphabet has no O, no I, no zero and no one.
  *
  * Explicit width and height, never `aspect-ratio`: Chromium 88.
+ *
+ * The shadow is the strongest cue available that a thing rests on a surface,
+ * and it is what the tilt needs to be legible: turned and shadowed reads as
+ * an object dropped on a table, turned alone reads as a layout mistake. It
+ * rotates with the tile, which is right — the light does not turn with it,
+ * but at these angles and this blur nobody sees the difference, and the
+ * alternative is a second element per tile on a screen that has to stay
+ * light.
+ *
+ * `margin-right` here is only the floor. `apps/tv/src/tilt.ts` writes an
+ * inline `margin-right` on every tile but the last, widening the gap by a
+ * multiple of `--m8-scatter-step`, so that the four tiles are not evenly
+ * spaced. `box-shadow` is Chromium 10.
  */
 .m8-tile {
   display: flex;
@@ -214,6 +272,7 @@ img {
   margin-right: var(--m8-piece-gap);
   border-radius: var(--m8-tile-radius);
   background-color: var(--m8-paper);
+  box-shadow: 0 var(--m8-shadow-lift) var(--m8-shadow-blur) var(--m8-shadow);
   color: var(--m8-ink);
   font-family: var(--m8-font-display);
   font-size: var(--m8-tile-type);
@@ -224,8 +283,18 @@ img {
   margin-right: 0;
 }
 
+/*
+ * The line under the code, for a phone with no usable camera.
+ *
+ * Its margin is two scatter steps wider than every other gap on this screen,
+ * and those steps are not decoration: a tile at the bottom of its range has
+ * dropped by its full lift and thrown a corner down as well, and without the
+ * extra step the lowest tile's shadow would land on this text. Charged in
+ * `scripts/tv-safe-area.test.ts`, which asserts the clearance rather than
+ * assuming it.
+ */
 .m8-address {
-  margin-top: var(--m8-row-gap);
+  margin-top: calc(var(--m8-row-gap) + var(--m8-scatter-step) * 2);
   font-family: var(--m8-font-text);
   font-size: var(--m8-address-type);
   line-height: 1;
@@ -233,10 +302,12 @@ img {
   color: var(--m8-paper);
 }
 
+/* The same shadow as a tile: it is the same kind of object on the same table. */
 .m8-qr {
   padding: var(--m8-qr-padding);
   border-radius: var(--m8-qr-radius);
   background-color: var(--m8-paper);
+  box-shadow: 0 var(--m8-shadow-lift) var(--m8-shadow-blur) var(--m8-shadow);
 }
 
 .m8-qr img {

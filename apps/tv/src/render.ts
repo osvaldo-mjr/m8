@@ -1,7 +1,14 @@
 import { avatarGlyph } from '@m8/avatars'
 import type { ErrorCode, ParticipantSnapshot } from '@m8/protocol'
 import { PERSON_COLOR_PROPERTY, personColor } from '@m8/tokens'
-import { pieceTilt, tiltTransform } from './tilt.js'
+import {
+  QR_SCATTER_STEP_PROPERTY,
+  SCATTER_STEP_PROPERTY,
+  arrangePieces,
+  pieceSpacing,
+  pieceTransform,
+} from './tilt.js'
+import type { PiecePlacement } from './tilt.js'
 
 export interface TvView {
   readonly code: string
@@ -64,11 +71,12 @@ export const CHIPS_ABREAST = 4
 
 /**
  * The things lying on the table, numbered left to right: four code tiles,
- * then the QR. `tilt.ts` turns each of them by an angle derived from the
- * code, so one table always arranges itself the same way and two tables do
- * not look alike.
+ * then the QR. `tilt.ts` turns, lifts and spaces each of them from the code,
+ * so one table always arranges itself the same way and two tables do not look
+ * alike.
  */
 const QR_PIECE_INDEX = 4
+const PIECE_COUNT = QR_PIECE_INDEX + 1
 
 /**
  * What is currently on screen, per root.
@@ -115,19 +123,36 @@ function eyebrowRow(right?: string): HTMLElement {
  * character of a table code is read out and typed on its own; drawing them
  * as four tiles is that fact made visible.
  */
-function codeTiles(code: string): HTMLElement {
+function codeTiles(code: string, placements: readonly PiecePlacement[]): HTMLElement {
   const tiles = element('div', 'm8-code')
   for (let index = 0; index < code.length; index += 1) {
+    const placement = placements[index]
     const tile = element('div', 'm8-tile', code.charAt(index))
-    tile.style.transform = tiltTransform(pieceTilt(code, index))
+    if (placement !== undefined) {
+      tile.style.transform = pieceTransform(placement, SCATTER_STEP_PROPERTY)
+      // The gap after this tile, which the last one does not have — the
+      // stylesheet already zeroes its margin, and an inline style would win
+      // over that rule and put a gap between the code and the QR that the
+      // block margin is there to set.
+      if (index < code.length - 1) {
+        tile.style.marginRight = pieceSpacing(placement, SCATTER_STEP_PROPERTY)
+      }
+    }
     tiles.appendChild(tile)
   }
   return tiles
 }
 
-function qrPiece(code: string): HTMLElement {
+function qrPiece(placement: PiecePlacement | undefined, code: string): HTMLElement {
   const frame = element('div', 'm8-qr')
-  frame.style.transform = tiltTransform(pieceTilt(code, QR_PIECE_INDEX))
+  if (placement !== undefined) {
+    // Its own, smaller step. The QR is the largest thing on the table, so its
+    // turned and lifted bounding box is what sets the least height the table
+    // can be drawn in — and it lies alone rather than in a row, so there is
+    // no baseline for it to break out of. A large lift here would cost the
+    // row of people real space and buy nothing anybody can see.
+    frame.style.transform = pieceTransform(placement, QR_SCATTER_STEP_PROPERTY)
+  }
 
   const image = document.createElement('img')
   image.setAttribute('src', `/qr/${code}.svg`)
@@ -136,7 +161,7 @@ function qrPiece(code: string): HTMLElement {
   return frame
 }
 
-/** The flat violet surface everything is laid out on. It is never turned. */
+/** The flat terracotta surface everything is laid out on. It is never turned. */
 function surface(variant: string): HTMLElement {
   return element('div', `m8-table ${variant}`)
 }
@@ -147,12 +172,16 @@ function buildTable(root: HTMLElement, view: TvView): TableDom {
   const stage = element('div', 'm8-stage')
   stage.appendChild(eyebrowRow(DISPLAY_FACE_STRINGS.joinEyebrow))
 
+  // One call for the whole table, not one per piece: the guarantee that two
+  // neighbours are visibly different cannot be made by a piece on its own.
+  const placements = arrangePieces(view.code, PIECE_COUNT)
+
   const table = surface('m8-table-join')
   const block = element('div', 'm8-code-block')
-  block.appendChild(codeTiles(view.code))
+  block.appendChild(codeTiles(view.code, placements))
   block.appendChild(element('p', 'm8-address', view.address))
   table.appendChild(block)
-  table.appendChild(qrPiece(view.code))
+  table.appendChild(qrPiece(placements[QR_PIECE_INDEX], view.code))
   stage.appendChild(table)
 
   const people = element('ul', 'm8-people')
