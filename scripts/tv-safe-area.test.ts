@@ -214,20 +214,72 @@ describe('the screen at every number of people the table holds', () => {
   }
 
   /**
-   * WCAG relative luminance of a `#rrggbb` value, which is what the lighting
-   * stack below is ordered by. Computed here rather than eyeballed: a test
-   * that ordered the palette by eye would be no better than the eye that
-   * produced the palette.
+   * Colour, as arithmetic. Four small functions, because the whole of this
+   * round's palette rests on ratios that until now were only in a document.
+   *
+   * The one that found this round's defect — a headline that had sat in the
+   * product at 1.73:1 for rounds because nobody had computed it — is
+   * `contrast`. The systemic answer to a colour nobody measured is not
+   * another paragraph promising it was measured; it is an assertion.
    */
-  function luminance(value: string): number {
-    const digits = /^#([0-9a-f]{6})$/i.exec(value.trim())
-    if (digits === null || digits[1] === undefined) throw new Error(`Not a hex colour: ${value}`)
-    const hex = digits[1]
-    const channels = [0, 2, 4].map((at) => {
-      const channel = Number.parseInt(hex.slice(at, at + 2), 16) / 255
+
+  /** `#rrggbb` or `rgba(r, g, b, a)` as channels 0-255, alpha ignored. */
+  function rgb(value: string): [number, number, number] {
+    const text = value.trim()
+    const digits = /^#([0-9a-f]{6})$/i.exec(text)
+    if (digits !== null && digits[1] !== undefined) {
+      const hex = digits[1]
+      return [0, 2, 4].map((at) => Number.parseInt(hex.slice(at, at + 2), 16)) as [number, number, number]
+    }
+    const parts = /^rgba?\(([^)]*)\)$/i.exec(text)
+    if (parts === null || parts[1] === undefined) throw new Error(`Not a colour: ${value}`)
+    const numbers = parts[1].split(',').map((each) => Number.parseFloat(each))
+    if (numbers.length < 3) throw new Error(`Not a colour: ${value}`)
+    return [numbers[0] ?? 0, numbers[1] ?? 0, numbers[2] ?? 0]
+  }
+
+  /** The alpha of an `rgba()` value; an opaque colour is 1. */
+  function alpha(value: string): number {
+    const parts = /^rgba\(([^)]*)\)$/i.exec(value.trim())
+    if (parts === null || parts[1] === undefined) return 1
+    const numbers = parts[1].split(',')
+    return numbers.length < 4 ? 1 : Number.parseFloat(numbers[3] ?? '1')
+  }
+
+  /**
+   * A translucent colour painted over an opaque one — which is what a chip
+   * actually stands on, and the whole reason these figures have to be
+   * computed rather than read off the token. `--m8-lamp-2` covers the entire
+   * viewport, so the floor beneath a person's colour is never `--m8-ground`
+   * itself.
+   */
+  function over(source: string, under: [number, number, number]): [number, number, number] {
+    const a = alpha(source)
+    const top = rgb(source)
+    return [0, 1, 2].map((i) => (top[i] ?? 0) * a + (under[i] ?? 0) * (1 - a)) as [number, number, number]
+  }
+
+  /**
+   * WCAG relative luminance, which is what the lighting stack below is
+   * ordered by. Computed here rather than eyeballed: a test that ordered the
+   * palette by eye would be no better than the eye that produced the palette.
+   */
+  function luminanceOf(channels: [number, number, number]): number {
+    const linear = channels.map((value) => {
+      const channel = value / 255
       return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)
     })
-    return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0)
+    return 0.2126 * (linear[0] ?? 0) + 0.7152 * (linear[1] ?? 0) + 0.0722 * (linear[2] ?? 0)
+  }
+
+  function luminance(value: string): number {
+    return luminanceOf(rgb(value))
+  }
+
+  function contrast(a: [number, number, number], b: [number, number, number]): number {
+    const first = luminanceOf(a)
+    const second = luminanceOf(b)
+    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
   }
 
   /**
@@ -671,13 +723,44 @@ describe('the screen at every number of people the table holds', () => {
       return stops
     }
 
+    /**
+     * Everything about one gradient that would let it ramp, in words.
+     *
+     * Two ways, and the second is the one the first version of this guard
+     * missed. A stop can carry a position that differs from its neighbour's,
+     * which is the obvious ramp — and a stop can carry *no position at all*,
+     * which is the plainest ramp there is: `linear-gradient(to bottom, a, b)`
+     * is a smooth fade from top to bottom, it has no positions to disagree
+     * about, and a guard that only compares positions passes it. That is
+     * exactly the edit this guard exists to stop, because it is what somebody
+     * softening the lamp in place would write. The count assertion below does
+     * not cover it either: it catches a gradient being *added*, not one being
+     * replaced.
+     */
+    function rampFaults(argumentList: string): string[] {
+      const stops = colorStops(argumentList)
+      const faults: string[] = []
+      if (stops.length < 2) faults.push('fewer than two colour stops')
+      for (let index = 0; index < stops.length; index += 1) {
+        const stop = stops[index]
+        if (stop === undefined) continue
+        if (stop.position === '') faults.push(`${stop.color} carries no position`)
+        const before = index === 0 ? undefined : stops[index - 1]
+        if (before === undefined || before.color === stop.color) continue
+        if (before.position !== stop.position) {
+          faults.push(`${before.color} ${before.position} ramps into ${stop.color} ${stop.position}`)
+        }
+      }
+      return faults
+    }
+
     /** Every gradient the stylesheet declares, with where it was found. */
-    const declared: { where: string; stops: { color: string; position: string }[] }[] = []
+    const declared: { where: string; argumentList: string }[] = []
     for (const match of styles.matchAll(/(?:^|[;{])\s*background-image\s*:\s*([^;]+)/g)) {
       const value = match[1]
       if (value === undefined) continue
       for (const argumentList of gradients(value)) {
-        declared.push({ where: value.slice(0, 40), stops: colorStops(argumentList) })
+        declared.push({ where: value.slice(0, 40), argumentList })
       }
     }
 
@@ -691,18 +774,31 @@ describe('the screen at every number of people the table holds', () => {
 
     it('gives every gradient stop a partner at the same position, so nothing can band', () => {
       for (const gradient of declared) {
-        expect(gradient.stops.length).toBeGreaterThan(1)
-        for (let index = 1; index < gradient.stops.length; index += 1) {
-          const before = gradient.stops[index - 1]
-          const after = gradient.stops[index]
-          if (before === undefined || after === undefined) continue
-          if (before.color === after.color) continue
-          // Compared as strings so a failure names the pair that ramps.
-          expect(`${before.color} ${before.position} -> ${after.color} ${after.position}`).toBe(
-            `${before.color} ${before.position} -> ${after.color} ${before.position}`,
-          )
-        }
+        expect([gradient.where, rampFaults(gradient.argumentList)]).toEqual([gradient.where, []])
       }
+    })
+
+    it.each([
+      ['var()', 'to bottom, var(--m8-lamp-1), var(--m8-lamp-2)'],
+      ['hex', 'to bottom, #9b6437, #8d5b32'],
+      ['rgba()', 'to bottom, rgba(255, 217, 168, 0.16), rgba(255, 217, 168, 0.06)'],
+      ['one stop positioned and one not', 'to bottom, var(--m8-lamp-1) 0, var(--m8-lamp-2)'],
+      ['positions that disagree', 'to bottom, var(--m8-lamp-1) 0, var(--m8-lamp-1) 38%, var(--m8-lamp-2) 40%'],
+    ])('rejects a gradient that ramps, written in the %s form', (_form, argumentList) => {
+      // The first three of these passed the first version of this guard,
+      // which compared positions as strings and recorded a missing position
+      // as an empty one — so two stops with no positions compared equal. They
+      // are the plainest ramp CSS can express and the likeliest edit to
+      // arrive: somebody softening the lamp where it stands.
+      expect(rampFaults(argumentList).length).toBeGreaterThan(0)
+    })
+
+    it('accepts the hard-stopped form the stylesheet actually uses', () => {
+      // Guards the guard from the other side: a check that rejected
+      // everything would pass the five assertions above by accident.
+      expect(
+        rampFaults('ellipse 140% 66% at 50% 40%, var(--m8-lamp-1) 0, var(--m8-lamp-1) 38%, var(--m8-lamp-2) 38%, var(--m8-lamp-2) 100%, transparent 100%'),
+      ).toEqual([])
     })
 
     it('lights the room from above the table rather than everywhere', () => {
@@ -741,6 +837,66 @@ describe('the screen at every number of people the table holds', () => {
       expect(board).toBeGreaterThan(dark)
       expect(dark).toBeGreaterThan(edge)
       expect(edge).toBeGreaterThan(floor)
+    })
+
+    /**
+     * The two ratios the whole round rests on, asserted rather than published.
+     *
+     * Everything else in this file is a box or an ordering. These are the
+     * numbers the design is actually accountable to, and until now they lived
+     * only in `docs/notes/visual-identity-report.md` — which is how a headline
+     * came to sit in the product at 1.73:1 for three rounds. Raising
+     * `--m8-lamp-2`'s alpha, lightening `--m8-plank-light`, or touching any
+     * one of the eight person colours breaks a stated guarantee, and until
+     * these two assertions existed nothing failed when it did.
+     */
+    describe('the ratios the palette is accountable to', () => {
+      const root = rule(tokens, ':root')
+      const ground = rgb(declaration(root, '--m8-ground'))
+      /*
+       * Not `--m8-ground`: `--m8-lamp-2` has no visible outer edge, so it
+       * washes the entire viewport and the floor a chip stands on is the
+       * lamp over the ground. Measuring against the bare token would be
+       * measuring a surface that is not on the screen.
+       */
+      const floor = over(declaration(root, '--m8-lamp-2'), ground)
+
+      const people = Array.from({ length: 8 }, (_, index) => index + 1)
+      it.each(people)(
+        'keeps person colour %i legible against the floor the chips stand on',
+        (person) => {
+          // 4.5:1, not 3:1, and the reason is the smallest thing drawn in a
+          // person's colour rather than the largest: `RECONNECTING` is 13px
+          // at 1280, which is below the 24px that counts as large text. The
+          // disc is 60px and would be comfortable at 3:1; the label is what
+          // binds, and taking the flattering reading would have let the floor
+          // go a long way lighter than it can.
+          const colour = rgb(declaration(root, `--m8-person-${person}`))
+          expect(contrast(colour, floor)).toBeGreaterThanOrEqual(4.5)
+        },
+      )
+
+      it('keeps paper legible on the brightest board of the tabletop', () => {
+        // The margin here is 0.10 — paper on the lightest board is 4.60:1
+        // against a threshold of 4.5:1 — so this is the assertion that stops
+        // somebody warming the wood by a few code values and silently taking
+        // the error code under the line. The threshold comes from
+        // `.m8-code-line` at 18px on the 1280 tier; at 1920 it is 26px and
+        // only needs 3:1.
+        const paper = rgb(declaration(root, '--m8-paper'))
+        const board = rgb(declaration(root, '--m8-plank-light'))
+        expect(contrast(paper, board)).toBeGreaterThanOrEqual(4.5)
+      })
+
+      it('is measuring what it claims to measure', () => {
+        // Guards the two above. If `over` ever stopped compositing, `floor`
+        // would silently become `--m8-ground` and both assertions would get
+        // easier rather than failing — which is the exact shape of the defect
+        // this round had to correct in its own report.
+        expect(luminanceOf(floor)).toBeGreaterThan(luminanceOf(ground))
+        expect(alpha(declaration(root, '--m8-lamp-2'))).toBeLessThan(1)
+        expect(alpha(declaration(root, '--m8-paper'))).toBe(1)
+      })
     })
 
     it('builds the tabletop out of boards with a joint between them', () => {

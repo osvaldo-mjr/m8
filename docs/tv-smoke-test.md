@@ -76,7 +76,7 @@ supported on Chromium 68, and none has an experiment behind it.
     the fallback stack is drawing them.
 11. Confirm each code tile and the QR sit turned — noticeably, from three
     metres, not subtly — and at different heights, with unequal gaps between
-    the tiles, while the terracotta table itself and the row of people are
+    the tiles, while the wooden table itself and the row of people are
     square. If everything is square, `transform: rotate()` is not being
     applied; if the tiles are turned but all sit on one line, the
     `translateY(calc(var(--m8-scatter-step) * N))` half is not.

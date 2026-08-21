@@ -365,8 +365,15 @@ export function pieceSpacing(placement: PiecePlacement, stepProperty: string): s
  * range: the leftmost throws fully left, the rightmost fully right, and a
  * piece in the middle throws none. It is derived from the index rather than
  * from pixel positions, and the approximation is deliberate — the lengths on
- * this screen live in the stylesheet and this module cannot see them. What
- * the eye reads is the ordering and the sign, and those are exact.
+ * this screen live in the stylesheet and this module cannot see them.
+ *
+ * The approximation is not exact, and the error is worth naming rather than
+ * glossing. The QR is far wider than a tile, so the *index* midpoint of the
+ * row is not its geometric midpoint: the third tile throws nothing while
+ * sitting left of the lamp — measured at 68px left of the table's centre at
+ * 1280x720 for one code, and it moves with the gaps the scatter draws. What
+ * the eye reads is the ordering and the sign, and those are near enough that
+ * it cannot tell.
  *
  * `down` is one step, in the direction the piece's own lift took it, on top
  * of the constant `--m8-shadow-lift` every piece has. It is small next to

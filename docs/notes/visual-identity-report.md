@@ -1640,13 +1640,28 @@ Two decisions were taken from those and shape everything below.
 ruins a smooth gradient: a soft falloff comes back as a stack of stripes. But a
 stripe is a step, so the steps are chosen deliberately and the set has nothing
 left to ruin. The light pool falls off in discrete steps, the boards are flat
-tones with hard seams, and there is **no ramp anywhere in the emitted
-stylesheet**.
+tones with hard seams, and there is **no ramp anywhere in the stylesheet**.
+
+> **Correction, 2026-08-21.** This sentence originally said "the emitted
+> stylesheet". The test that backs it reads the *source*, so as written the
+> claim was broader than the check. The build was then grepped: it contains
+> exactly five gradients, all of them ours, and not one colour stop without a
+> position. So the statement is true of the emitted file today, and it is
+> verified there by hand rather than by CI. See *The guard passed the plainest
+> ramp there is* below.
 
 **The table brightens; the room does not.** The obvious cure for "too dark" is
 to lighten the background, and it would break the signature: the chips sit on
 the floor, and a saturated colour needs a dim ground. A lamp over a table lights
 the table, not the room.
+
+> **Correction, 2026-08-21.** The second half of that is false of the picture.
+> `--m8-lamp-2` has no visible outer edge, so it washes the whole viewport and
+> the room *is* lightened — by 14, 12 and 9 code values — at a cost of 0.69 to
+> 1.71 of contrast on every person colour. The owner has seen the screen and
+> approved keeping it. The full trade, and the alternative, are in *The floor
+> is lightened after all* below; every figure in this section was recomputed
+> against the washed floor rather than against `--m8-ground`.
 
 ## Why the mean luminance of the tabletop barely moved, and what brightened instead
 
@@ -1665,10 +1680,25 @@ Raising the error code to 24px would have lifted that cap. It was not done: it
 is a change nobody asked for, and the picture did not need it. What answers
 *muito triste* is not mean luminance, it is **structure and range** — a floor
 that has something in it, a tabletop made of boards, a pool of light with a
-middle and an outside, and shadows that agree about where the light is. The
-lightest board is now 3.64:1 against the floor where the old flat terracotta was
-3.38:1, and the darkest shaded board is 2.57:1, so the slab has modelling where
-it had none.
+middle and an outside, and shadows that agree about where the light is.
+
+> **Correction, 2026-08-21.** This paragraph originally ended: "The lightest
+> board is now 3.64:1 against the floor where the old flat terracotta was
+> 3.38:1, and the darkest shaded board is 2.57:1, so the slab has modelling
+> where it had none." Both figures were measured against `--m8-ground` — a
+> floor that is not on the screen, because `--m8-lamp-2` washes all of it. As
+> composited the lightest board is **3.19:1** against the floor beside it and
+> the darkest shaded board is **2.25:1**. So the direction of the comparison
+> was wrong: the tabletop separates from the floor **less** than the flat
+> terracotta did, not more.
+>
+> What is left of the claim is the part that does not involve the floor, and it
+> is correct as measured: the tabletop now runs from 0.1636 to 0.1010 in
+> relative luminance across its own surface where the terracotta was one flat
+> value, so **the slab has modelling where it had none** — that is
+> board-against-board, and it is what makes it read as a lit object. The
+> separation from the room is carried by the edge band and the piece shadows,
+> not by the surface ratio.
 
 ## The palette
 
@@ -1693,9 +1723,13 @@ colour is written down.
 | `--m8-ink` | `var(--m8-ground)` | unchanged | and so it followed the floor again |
 | `--m8-shadow` | `rgba(45, 18, 10, 0.45)` | unchanged | what a piece casts on the table |
 
-`--m8-ground` was deliberately **not** touched. Every one of the eight person
-colours is measured against it, so changing it would have moved all eight at
-once; the floor gains structure and light on top of it instead.
+The **token** `--m8-ground` was deliberately not touched. What a chip stands on
+was: `--m8-lamp-2` washes the whole viewport, so the floor beside a person's
+colour is that token raised by 14, 12 and 9 code values, and every figure below
+is computed against the composite rather than against the token. Editing the
+value and editing that alpha are the same decision under two names — the token
+comment now says so, and *The floor is lightened after all* below gives the
+cost.
 
 Three tokens repeat an rgb triple at different alphas. That is not a second copy
 of a colour escaping the file — CSS has no way to restate an existing colour at
@@ -1707,8 +1741,16 @@ here, and named.
 
 `.m8-headline-alarm` — `SOMETHING WENT WRONG`, 92px and 64px — was
 `var(--m8-person-1)`. Coral on the old terracotta is **1.73:1**, and on the new
-lightest board it would have been **1.38:1**. It had never been measured in any
-round. A pale warm red clears 3:1, which is the threshold for text that size:
+lightest board it is **1.60:1**. It had never been measured in any round.
+
+> **Correction, 2026-08-21.** The figure first published here was 1.38:1, which
+> is not the ratio of any pair of colours in this palette. Coral's relative
+> luminance is 0.2924 and the lightest board's is 0.1636, which is **1.60:1**.
+> The conclusion is unaffected — a headline at 1.60:1 is unreadable and needed
+> its own token — but the number was wrong in the two shipped source comments
+> that quoted it as well, and both are corrected in place.
+
+A pale warm red clears 3:1, which is the threshold for text that size:
 `#ffbfad` is **3.12:1** on the lightest board, 3.37 on the middle one, 3.62 on
 the darkest, and 3.44 to 4.41 wherever the lamp shades it. It still reads as an
 alarm rather than as paper beside it, because the hue difference does the work
@@ -1782,14 +1824,27 @@ too. The error screen was driven and photographed rather than reasoned about.
 
 ### The room reading as a room
 
-| | Ratio | |
-|---|---|---|
-| lightest board vs unlit floor | **3.64** | was 3.38 for the flat terracotta |
-| middle board vs unlit floor | 3.36 | |
-| darkest board fully shaded vs unlit floor | **2.57** | the table's outer corners |
-| board seam vs lightest board | **2.52** | what makes the boards read as boards |
-| floor seam vs floor tile | 1.11 | a ratio is the wrong instrument here — see below |
-| a piece's shadow vs the board under it | 1.82 | 1.57 on shaded wood |
+Every figure here is against **the floor as composited** — `--m8-lamp-2` over
+`--m8-ground` — because that is what is beside the table on the screen. The
+unlit figures are given alongside, and the first published version of this
+table quoted only those, which got the headline comparison backwards.
+
+| | Against the washed floor | Against `--m8-ground` alone | |
+|---|---|---|---|
+| lightest board | **3.19** | 3.64 | the flat terracotta was **3.38** against its own room |
+| middle board | 2.95 | 3.36 | |
+| darkest board, fully shaded | **2.25** | 2.57 | the table's outer corners |
+| the edge band | 1.43 | 1.63 | still above the floor, which is what matters |
+| board seam vs lightest board | **2.52** | — | what makes the boards read as boards |
+| floor seam vs floor tile | 1.11 | — | a ratio is the wrong instrument here — see below |
+| a piece's shadow vs the board under it | 1.82 | — | 1.57 on shaded wood |
+
+**So the tabletop separates from the room slightly less than the terracotta
+did**, 3.19 against 3.38, and that is the price of the floor wash rather than a
+property of the wood. What replaced the missing separation is modelling the
+terracotta never had: the surface now runs across a 1.6× range of its own, it
+carries six board joints at 2.52:1, and every piece on it throws a shadow that
+agrees with one light.
 
 The lighting stack still descends the whole way down, which is what stops the
 edge band reading as a hole rather than as a front face: lightest board
@@ -1811,14 +1866,19 @@ risk on a real set — see the open list.
 `apps/phone` draws the nickname field and the unchosen avatar tiles on
 `--m8-table`, so the change reached it.
 
+`AVATAR_TILE_UNCHOSEN_CLASS` is `bg-table`, so both figures below are against
+`--m8-table` — the middle board — and not against `--m8-plank-light`, which the
+phone never draws.
+
 | | On the old terracotta | On the middle board |
 |---|---|---|
 | paper on the field (24px, large text) | 4.95 | **4.98** |
-| the eight person colours on an unchosen tile | 1.65 to 4.09 | **1.54 to 4.11** |
+| the eight person colours on an unchosen tile | 1.65 to 4.09 | **1.66 to 4.11** |
 
-The avatar picker's weak case is a fraction weaker and unchanged in kind: it was
-closed in the previous round by giving the chosen tile a border in the paper
-colour, **16.73:1** against the dark gaps between the tiles whatever the fill
+So the avatar picker's weak case is a hair *better* than it was, not worse:
+blue, the worst of the eight, went 1.65 → **1.66**. It is unchanged in kind
+either way, and it was closed in the previous round by giving the chosen tile a
+border in the paper colour, **16.73:1** against the dark gaps between the tiles whatever the fill
 happens to be — a cue that does not depend on the palette, which is why this
 round did not have to touch it. Confirmed in the container at 390×844: the
 chosen tile carries `4px rgb(255, 246, 236)` and the rest `4px rgba(0, 0, 0, 0)`.
@@ -1872,8 +1932,10 @@ the quantisation of a *ramp* — a smooth falloff crosses code-value boundaries 
 intervals, and a set's contrast processing stretches those intervals into
 visible contours. A flat region has no ramp to quantise, so there is nothing for
 the processing to find; that part of the claim holds, and it holds for the whole
-page, because there is now no smooth gradient anywhere in the emitted
-stylesheet. What can still happen at a *boundary* is (a) edge enhancement, which
+page, because there is now no smooth gradient anywhere in the stylesheet — in
+the source, which is where the test looks, and in the build, which was grepped
+by hand: exactly five gradients, all of them ours, and not one colour stop
+without a position. What can still happen at a *boundary* is (a) edge enhancement, which
 many sets apply and which would halo a step, and (b) Mach banding, which is the
 eye's own lateral inhibition making a flat region look brighter just inside a
 darker edge. Neither is banding and neither multiplies: there are two boundaries
@@ -1886,8 +1948,13 @@ page is zero rather than small.
 The claim is checked rather than asserted. `scripts/tv-safe-area.test.ts` parses
 every gradient in the stylesheet — the argument list, the stops, the positions —
 and fails if any two consecutive stops of different colours sit at different
-positions. It also asserts that there are exactly five gradients and no `url(`,
-so it cannot pass vacuously.
+positions, **or if any stop has no position at all**. It also asserts that there
+are exactly five gradients and no `url(`, so it cannot pass vacuously.
+
+> **Correction, 2026-08-21.** The second half of that sentence — the missing
+> position — is what the first version of the guard did not do, and without it
+> the guard passed the plainest ramp CSS can express. See *The guard passed the
+> plainest ramp there is* below.
 
 ### Why the floor's pool has two steps and not four
 
@@ -2121,10 +2188,11 @@ are still asserted verbatim.
 - **The tabletop cannot brighten further while the error code is 18px.** Stated
   above with the arithmetic. If a later round wants a brighter table, that line
   is the thing to change first, and this paragraph is the note saying so.
-- **The phone's avatar picker is a fraction weaker again**, 1.54:1 at worst
-  where it was 1.65:1, and unchanged in kind: the paper border added last round
-  is what carries it, and `apps/phone` still has no DOM test, so
-  `avatarTileClassName` plus smoke-test step 15 remain the only guards.
+- **The phone's avatar picker is unchanged in strength**, 1.66:1 at worst where
+  it was 1.65:1 — measured against `--m8-table`, which is the token the
+  unchosen tile actually draws. The paper border added last round is what
+  carries it, and `apps/phone` still has no DOM test, so `avatarTileClassName`
+  plus smoke-test step 15 remain the only guards.
 - **The floor's light pool has one visible boundary rather than a falloff**,
   because there is not enough visible floor for more. That is a real reduction
   against what the brief described — "the light pool falls off in discrete
@@ -2137,3 +2205,317 @@ are still asserted verbatim.
   still fall back to a system font, the baton still has no visual mark, and the
   two zigzag residuals and the lag-2 angle repetition from the previous round
   are unchanged and still unpinned. None of them was touched here.
+
+---
+
+# The room round, reviewed — a corrupted file, three wrong figures, and two guards that did not guard
+
+Written 2026-08-21, on the review of the round above, which approved the look —
+the room stays as it is, floor wash included. At the moment of writing the
+working tree holds only the changes described here, on top of `91f5687`, and
+nothing is pushed. Five findings, none of which changes the picture, and four
+smaller ones. Every figure below was measured on this machine on this date.
+
+## `apps/tv/src/styles.css` was re-encoded, and every em dash in it was destroyed
+
+**What happened.** During this round the lamp's inner stop was moved from 38% to
+55% and back, to prove that the new safe-area assertion actually fails. Both
+edits were made with PowerShell:
+
+```
+(Get-Content apps/tv/src/styles.css -Raw) -replace ... | Set-Content ... -Encoding utf8
+```
+
+`Get-Content` without `-Encoding` in Windows PowerShell 5.1 reads using the
+system ANSI code page, so it decoded the file's UTF-8 bytes as cp1252 — `—`
+(`E2 80 94`) became the three characters `â€”` — and `Set-Content -Encoding utf8`
+then wrote those three characters back as UTF-8, permanently. 30 occurrences
+across 25 lines, most of them in comments that predate this round and that the
+diff did not otherwise touch. The same command also added a UTF-8 BOM and CRLF
+line endings; those two were noticed and repaired at the time, and the mojibake
+was not.
+
+**Why nothing caught it.** Every one of the 30 is inside a CSS comment. The CSS
+guard strips comments before it looks at anything — deliberately, because the
+stylesheet explains in prose that it uses no `clamp()` and no `:where()`, and a
+guard reading that prose would fail the build on the paragraph saying why the
+build should pass. The minifier strips them too, so nothing reached the browser
+and no test, guard or build step had any reason to notice. It would have sat
+there.
+
+**What was done.** The file was read as UTF-8, re-encoded to cp1252 and decoded
+as UTF-8 again — the exact inverse of the corruption, which is lossless because
+`â€”` was the only non-ASCII sequence in the file. 30 em dashes restored; 0
+occurrences of `â€”` remain; no BOM; LF throughout. Every other file this round
+touched was checked the same way and none was affected: only these two commands
+ever wrote through PowerShell.
+
+**And the rule that follows from it.** Nothing in this repository is written
+through `Get-Content`/`Set-Content` again. Every edit in this correction round
+was made by a Python script reading and writing with an explicit
+`encoding='utf-8', newline='\n'`. PowerShell stays what it is here — the way
+`npm test` is run, because the sandboxed Bash tool kills vitest workers — and
+nothing more.
+
+`.gitattributes` already declares `* text=auto eol=lf`, which is what caught the
+line endings. It cannot catch an encoding change, because both versions are
+valid UTF-8; only the characters differ.
+
+## Three published contrast figures did not reproduce, and two were measured against a surface that is not on the screen
+
+All three are corrected in place above, and in the two shipped source comments
+that quoted the first of them.
+
+**`1.38` was never a ratio in this palette.** Coral's relative luminance is
+0.2924 and the lightest board's is 0.1636, which gives **1.60:1**. No surface in
+the palette produces 1.38 — the shaded boards, the lamp-lit boards, paper and
+the alarm colour were all tried. It appeared in four places, two of them shipped
+source comments (`apps/tv/src/styles.css` and `packages/tokens/tokens.css`), one
+in this document, and one in the commit message, where it is now part of the
+history and cannot be corrected. The conclusion it supports is untouched: a
+headline at 1.60:1 is unreadable and needed its own token.
+
+**`1.54` was measured against a token the phone never draws.**
+`AVATAR_TILE_UNCHOSEN_CLASS` in `apps/phone/src/profile.ts` is `bg-table`, which
+resolves to `--m8-table` — the *middle* board, `#945f35`. Blue against it is
+**1.66:1**. The 1.54 was blue against `--m8-plank-light`, which appears only on
+the television. So the sentence built on it was backwards in the one way that
+matters: the picker's weak case went 1.65 → **1.66**, marginally *better*, not
+weaker. Corrected in the table and in the open list.
+
+**The room-reading comparison was measured against a floor that does not
+exist.** This is the one that matters, and it is the same mistake as the
+previous entry made structurally rather than by accident. The table's separation
+from the room was quoted at 3.64:1 for the lightest board and 2.57:1 for the
+darkest shaded one, both against `--m8-ground`. But `--m8-lamp-2` washes the
+entire viewport, so there is no `--m8-ground` on the screen to compare against.
+As composited the figures are **3.19:1** and **2.25:1**, and the headline
+comparison therefore has its direction wrong: against the old flat terracotta's
+3.38:1, the new tabletop separates from the room **less**, not more.
+
+What survives is the part that never involved the floor. The tabletop runs from
+0.1636 to 0.1010 in relative luminance across its own surface where the
+terracotta was one flat value, and it carries six board joints at 2.52:1. That
+is board-against-board modelling, it is correct as measured, and it is what
+makes the slab read as a lit object; the separation from the room is carried by
+the edge band and by the piece shadows rather than by the surface ratio.
+
+**The lesson is specific and is worth stating plainly.** The round's own hard
+requirement was that every figure be recomputed against the right surface, and
+the round then published two figures measured against surfaces that are not
+drawn. Both slipped for the same reason: a token name is easy to reach for and a
+composite is not. That is now what the two new ratio assertions exist to stop —
+see below — and one of them asserts specifically that the floor it measures
+against is *lighter* than `--m8-ground`, so a future edit that quietly stops
+compositing fails rather than getting easier.
+
+## The floor is lightened after all, and here is what it costs
+
+The brief for this round said: the table brightens, the room does not. The
+picture does not obey that, and the token comments claiming it does were true of
+`--m8-ground` and false of what is on screen.
+
+**What `--m8-lamp-2` actually is.** Its outer edge is off the bottom of the
+picture — the ellipse is 66% of the screen's height with its centre at 40%, so
+the outer boundary sits at 106% — which means it is not a step. It covers the
+whole viewport uniformly, its only visible boundary is the lens above the table
+(roughly 43px tall at 1920), and below the table's centre it terminates behind
+the table itself, so everything the people stand on is one flat tone.
+Functionally it is `--m8-ground` raised by **14, 12 and 9 code values**.
+
+**What it costs, for all eight.** Contrast against the floor, unlit versus
+washed, and the margin each has left over the 4.5:1 that the 13px
+`RECONNECTING` label needs:
+
+| | Colour | `--m8-ground` alone | The washed floor | Cost | Margin over 4.5 |
+|---|---|---|---|---|---|
+| 1 | `#ff5b4a` coral | 5.83 | 5.11 | −0.72 | 0.61 |
+| 2 | `#2bd9e4` cyan | 10.35 | 9.07 | −1.28 | 4.57 |
+| 3 | `#c6f24e` lime | 13.81 | 12.10 | −1.71 | 7.60 |
+| 4 | `#ff63c1` pink | 6.65 | 5.83 | −0.82 | 1.33 |
+| 5 | `#ffb020` amber | 9.78 | 8.57 | −1.21 | 4.07 |
+| 6 | `#9b7bff` violet | 5.68 | 4.98 | −0.70 | 0.48 |
+| 7 | `#3dd68c` green | 9.53 | 8.36 | −1.18 | 3.86 |
+| 8 | `#4c8dff` blue | **5.59** | **4.90** | **−0.69** | **0.40** |
+
+So the wash spends between 0.69 and 1.71 of contrast on every person colour, and
+it leaves **0.40 on blue** where the previous round had 1.09. That is the
+tightest margin anywhere in this design.
+
+**It stays, and the reason is the owner looking at the screen.** *Muito triste*
+was the complaint this round exists to answer, and the wash is a large part of
+what answers it: without it the whole lower third of the picture — the part with
+no table in it — is flat near-black behind the chips. The review confirmed the
+approval.
+
+**The alternative, recorded so a future round has the numbers rather than the
+argument.** Set `--m8-lamp-2`'s alpha to zero:
+
+- every person colour returns to its unlit figure, giving blue 5.59:1 and 1.09
+  of margin back;
+- the one visible boundary — the lens above the table — strengthens from **23,
+  20, 15** code values to **36, 31, 24**, because `--m8-lamp-1` would then meet
+  bare floor instead of a washed one, so the glow round the table gets *more*
+  definite, not less;
+- and the price is the lower floor: everything below the table goes back to
+  `--m8-ground`, which is the thing the owner called sad.
+
+`packages/tokens/tokens.css` now carries that trade on `--m8-lamp-1` and the
+consequence on `--m8-ground`, and `apps/tv/src/styles.css` says on `body` that
+the dimmer tint is a wash rather than a ring. Anything proposing to brighten the
+floor further has 0.40 to spend and a test that will fail when it is gone.
+
+## The guard passed the plainest ramp there is
+
+**What was wrong.** `colorStops` recorded a stop with no position as `''`, and
+the hard-stop check compared positions as strings. Two stops with no positions
+therefore compared equal and passed. So
+
+```css
+background-image: linear-gradient(to bottom, var(--m8-lamp-1), var(--m8-lamp-2));
+```
+
+— a smooth top-to-bottom fade, the plainest ramp CSS can express — passed the
+guard whose entire purpose is to reject it, and so did the hex and `rgba()`
+spellings of the same thing. The `declared.length === 5` assertion does not
+cover it either: it catches a gradient being *added*, not one being replaced in
+place. Which is exactly the edit this guard exists to stop, because it is what
+somebody softening the lamp where it stands would write.
+
+**What was done.** The check is now a pure function, `rampFaults(argumentList)`,
+returning a list of reasons in words, and it rejects two things rather than one:
+a stop whose position differs from its neighbour's, and **a stop with no
+position at all**. The assertion compares the fault list against `[]`, so a
+failure names the pair.
+
+**The covering tests.** Five rejection cases, three of which passed the previous
+version — the `var()`, hex and `rgba()` forms of a two-stop fade — plus a
+mixed positioned/unpositioned pair and a pair whose positions disagree. And one
+acceptance case, the floor's real gradient written out verbatim, because a
+check that rejected everything would satisfy the five rejections by accident.
+
+**Proved by breaking it.** The table's light pool was rewritten as
+`radial-gradient(ellipse …, transparent, var(--m8-table-shade-2))` and the suite
+run: `'gives every gradient stop a partner at the same position'` failed, naming
+`transparent carries no position` and `var(--m8-table-shade-2) carries no
+position`. Restored, and green again.
+
+The same mutation applied to the *floor*'s gradient fails earlier and harder —
+the lamp-reach assertion parses that declaration for its stop position and
+throws when there is none — which is a second, accidental line of defence on the
+one gradient that carries a contrast guarantee.
+
+## Nothing asserted a ratio; now two things do
+
+**What was wrong.** `scripts/tv-safe-area.test.ts` had a `luminance()` helper and
+used it only for *orderings*: the floor seam below the floor tile, and the
+lighting stack descending. So raising `--m8-lamp-2`'s alpha, lightening
+`--m8-plank-light`, or editing any of the eight person colours would break a
+stated guarantee with nothing failing. In a round whose headline discovery was a
+colour that had sat in the product unmeasured for three rounds, that is the
+systemic version of the same defect.
+
+**What was done.** Four small colour functions in the same file — `rgb()`,
+`alpha()`, `over()` and `contrast()`, where `over()` composites a translucent
+colour onto an opaque one — and two assertions built on them:
+
+1. **Each of the eight person colours against the floor a chip stands on, at
+   ≥ 4.5:1.** Eight separate cases, so a failure names the colour. The floor is
+   `--m8-lamp-2` composited over `--m8-ground`, never the bare token: measuring
+   against the token would be measuring a surface that is not on the screen,
+   which is precisely the mistake corrected two sections above.
+2. **Paper against `--m8-plank-light` at ≥ 4.5:1.** The margin here is **0.10**
+   — the measured figure is 4.60:1 — so this is the assertion that stops
+   somebody warming the wood by a few code values and silently taking the error
+   code under the line.
+
+A third assertion guards those two: it checks that the composited floor is
+genuinely lighter than `--m8-ground`, that `--m8-lamp-2` has an alpha below 1,
+and that `--m8-paper` reads as opaque. If `over()` ever stopped compositing,
+both assertions would get *easier* rather than failing, which is the exact shape
+of the defect this round had to correct in its own report.
+
+**Proved by breaking them.** `--m8-lamp-2` raised from α 0.06 to α 0.12: coral,
+violet and blue failed and nothing else did — the same three the report names as
+the colours that go under 4.5 on the brighter tint. `--m8-plank-light` lightened
+from `#9b6437` to `#a26b3c`: the paper assertion failed alone. Both restored.
+
+(At α 0.09 nothing fails, correctly: blue is 4.53:1 there. The assertion is a
+threshold, not a pin, and 0.06 is where the picture put it.)
+
+## Four smaller things
+
+**`docs/tv-smoke-test.md` still said "the terracotta table"** in step 11, while
+steps 14 and 16 in the same file had been updated to wood. Corrected.
+
+**`apps/tv/src/tilt.ts` claimed the shadow ordering and sign were "exact".**
+They are not. The QR is far wider than a tile, so the row's *index* midpoint is
+not its geometric midpoint: the third tile throws no shadow while sitting left
+of the lamp — measured at **68px left of the table's centre at 1280×720** for
+one code, and it moves with the gaps the scatter draws. Invisible in the
+picture, and now named in the docstring rather than glossed: the ordering and
+the sign are "near enough that the eye cannot tell".
+
+**"No ramp anywhere in the emitted stylesheet"** was a claim about the build
+backed by a test that reads the source. The build was then grepped: exactly five
+gradients, all of them ours, and not one colour stop without a position. So the
+sentence is true today and is verified there by hand rather than by CI, and it
+now says which of the two it means.
+
+**The token comment capping the boards' brightness stated its threshold
+unconditionally.** `.m8-code-line` is 18px only on the 1280 tier; at 1920 it is
+26px and needs 3:1, as does everything else on the wood at either tier. So the
+1280 tier alone is what holds the boards this dark. The token now says so, and
+points at the assertion rather than asking to be believed.
+
+## Left alone, deliberately
+
+The floor radial's unreachable `transparent 100%` stop, the sixth plank seam
+fusing with the edge band, and the rejected multi-step floor falloff — all three
+were confirmed by the review as correct to leave, the last of them independently:
+there is exactly one stop position that avoids cutting the row of people, and
+taking it would spend the entire contrast margin that the `radialStopEdge`
+assertion exists to protect.
+
+## Verified
+
+Through PowerShell, because the sandboxed Bash tool still kills every vitest
+worker and reports zero tests.
+
+- `npm test` — **617 passed, 33 files** (601 before this round: eight
+  person-colour cases, the paper ratio, its self-check, five ramp rejections and
+  one ramp acceptance).
+- `npm run typecheck` — clean across all three projects.
+- `npm run guards` — ES2017 syntax check passed; Chromium 68 CSS check passed;
+  size **39,399 B** against the unchanged **42,000 B** ceiling, **unmoved**:
+  every change in this round is a comment, a test, or a character restored
+  inside a comment, and the minifier strips all of them.
+- The five gradients in `apps/tv/dist/assets/index-*.css` were read directly and
+  every colour stop in every one of them carries a position.
+- Four mutations were applied and reverted, each to prove an assertion fails
+  when it should: a positionless ramp in the table's pool, `--m8-lamp-2` at
+  α 0.12, `--m8-plank-light` at `#a26b3c`, and — from the round above, re-run —
+  the lamp's inner stop at 55%.
+
+**No picture changed**, which is why nothing was re-photographed: no colour
+value, no gradient geometry, no size and no rule was altered. The only source
+changes outside comments and tests are the em dashes restored to
+`apps/tv/src/styles.css`, which the browser never sees.
+
+## Not verified, and still open
+
+- **Everything listed as open in the round above is unchanged**, including that
+  nothing from either round has been on a real television.
+- **The commit message of `91f5687` contains the wrong 1.60 figure as 1.38.**
+  It is in the history and is not being rewritten; this section is the
+  correction of record.
+- **The two new ratio assertions cover the two claims the round rests on, and
+  not the rest of the palette.** The alarm colour on the boards, paper on the
+  floor, the board seam against its board and the phone's avatar picker are all
+  still figures in a document rather than assertions. They were left because
+  each has a wide margin; the two that were asserted are the two with 0.40 and
+  0.10.
+- **`rampFaults` is a text scan of the source, like the CSS guard beside it.**
+  It reads `apps/tv/src/styles.css`, so a gradient arriving from a dependency —
+  Tailwind emits none today — would not be seen by it. The build was checked by
+  hand this round; nothing checks it on every push.

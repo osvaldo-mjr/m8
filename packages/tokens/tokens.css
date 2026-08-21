@@ -31,8 +31,14 @@
    * This value is load bearing beyond the floor. Every one of the eight
    * person colours is measured against it — the chips sit on the floor, and
    * the whole design rests on being able to tell who is which colour from
-   * three metres — so it is the one colour here that cannot be lightened
-   * without recomputing all eight.
+   * three metres.
+   *
+   * **The token is unchanged since the terracotta palette; the floor on the
+   * screen is not.** `--m8-lamp-2` covers the whole viewport, so what a chip
+   * actually stands on is this colour raised by 14, 12 and 9 code values, and
+   * every one of the eight is measured against *that* — see the note on
+   * `--m8-lamp-1`. Editing this value and editing that alpha are the same
+   * decision wearing two names, and either means recomputing all eight.
    */
   --m8-ground: #1c1614;
   /**
@@ -70,6 +76,25 @@
    * put its one visible boundary hugging the table — which is where light
    * spilling off a lit surface belongs — and to run past the bottom of the
    * screen everywhere else.
+   *
+   * **Which means `--m8-lamp-2` is not a step: it is a wash.** Its outer edge
+   * is off the bottom of the picture, so it covers the whole viewport
+   * uniformly and its only visible boundary is the lens above the table.
+   * Under the table — which is where the people are — it is one flat tone,
+   * and functionally it is `--m8-ground` raised by 14, 12 and 9 code values.
+   *
+   * That is a real cost and it is spent knowingly. It takes between 0.69 and
+   * 1.71 off every person colour's contrast against the floor, and the worst
+   * of the eight, blue, from 5.59:1 to **4.90:1** — 0.40 of margin over the
+   * 4.5:1 the 13px `RECONNECTING` label needs. It is here because the owner
+   * looked at the screen with it: it is what answers "too dark", which is the
+   * complaint this round exists to fix.
+   *
+   * The alternative, if that margin is ever needed back: set this alpha to
+   * zero. Every colour returns to its unlit figure, the one visible boundary
+   * strengthens from 23 to 36 code values because `--m8-lamp-1` would then
+   * meet bare floor, and the price is that everything below the table goes
+   * back to flat near-black.
    */
   --m8-lamp-1: rgba(255, 217, 168, 0.16);
   --m8-lamp-2: rgba(255, 217, 168, 0.06);
@@ -86,9 +111,14 @@
    * bundle cannot afford.
    *
    * The light tone is the brightest surface any text on this screen sits on,
-   * which is what caps it: paper on it is 4.60:1, and the error code line is
-   * 18px, so it is the one piece of small text in the product and 4.5:1 is
-   * the threshold it has to clear.
+   * which is what caps it: paper on it is 4.60:1, against a threshold of
+   * 4.5:1. That threshold comes from one line at one resolution —
+   * `.m8-code-line`, the error code, is 18px at 1280 and is the only text in
+   * the product below the 24px that counts as large. At 1920 the same line is
+   * 26px and needs 3:1, as does everything else on the wood at either tier.
+   * So the 1280 tier alone is what holds the boards this dark, and
+   * `scripts/tv-safe-area.test.ts` asserts the ratio rather than leaving it
+   * to this paragraph.
    */
   --m8-plank-light: #9b6437;
   --m8-table: #945f35;
@@ -125,10 +155,10 @@
    * The one headline that has to say "this is wrong".
    *
    * It used to be `--m8-person-1`, which was never measured: coral on the old
-   * terracotta was 1.73:1 and on the new tabletop would have been 1.38:1, for
-   * a headline. A pale warm red clears 3:1 on the brightest board — the
-   * threshold for text this size — and still reads as an alarm rather than as
-   * paper beside it.
+   * terracotta was 1.73:1 and on the brightest board here is 1.60:1, for a
+   * headline. A pale warm red clears 3:1 on that board — the threshold for
+   * text this size — and still reads as an alarm rather than as paper beside
+   * it.
    */
   --m8-alarm: #ffbfad;
 
