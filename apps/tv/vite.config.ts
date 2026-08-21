@@ -13,6 +13,11 @@ export default defineConfig({
     // nullish coalescing may survive into the output; CI parses the bundle.
     target: 'es2017',
     modulePreload: { polyfill: false },
+    // The two self-hosted fonts stay files. Inlined as base64 they would be
+    // roughly a third larger, would be re-fetched with the stylesheet on
+    // every deploy instead of being cached on their own, and would block the
+    // first paint of a screen whose whole job is to not be blank.
+    assetsInlineLimit: 0,
   },
   esbuild: {
     target: 'es2017',

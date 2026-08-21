@@ -6,14 +6,51 @@ import { bytesOverBudget, isOverBudget } from './tv-size-budget.ts'
 
 const TV_DIST = 'apps/tv/dist'
 
+/**
+ * Code and stylesheets. These compress, and the server serves them
+ * compressed, so what they cost the television is their gzipped size.
+ */
+const TEXT_EXTENSIONS = ['.js', '.css']
+
+/**
+ * Fonts, which this screen now self-hosts because the television may have no
+ * route to the internet at all.
+ *
+ * They were invisible to this guard until they existed: it matched `.js` and
+ * `.css` only, so two woff2 files could be added and the bundle would go on
+ * being reported as comfortably within budget while the set downloaded
+ * twenty kilobytes more. The budget exists to keep the television light, and
+ * a guard that cannot see the heaviest new asset is not a budget.
+ *
+ * Measured raw, not gzipped: woff2 carries its own compression, nothing
+ * gzips it a second time on the way out, and a gzipped figure here would
+ * quietly understate what the television actually fetches.
+ */
+const FONT_EXTENSIONS = ['.woff2', '.woff', '.ttf', '.otf']
+
+function hasExtension(name, extensions) {
+  return extensions.some((extension) => name.endsWith(extension))
+}
+
 function assetFiles(dir) {
   const found = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name)
     if (entry.isDirectory()) found.push(...assetFiles(path))
-    else if (entry.name.endsWith('.js') || entry.name.endsWith('.css')) found.push(path)
+    else if (hasExtension(entry.name, TEXT_EXTENSIONS) || hasExtension(entry.name, FONT_EXTENSIONS)) {
+      found.push(path)
+    }
   }
   return found
+}
+
+/** What one file costs the television to fetch, and how that was arrived at. */
+function transferCost(path) {
+  const bytes = readFileSync(path)
+  if (hasExtension(path, FONT_EXTENSIONS)) {
+    return { bytes: bytes.byteLength, how: 'raw' }
+  }
+  return { bytes: gzipSizeSync(bytes), how: 'gzipped' }
 }
 
 /**
@@ -30,15 +67,25 @@ function missingAssetKinds(files) {
   return missing
 }
 
-// `tvDist` is overridable via a CLI argument (`process.argv[2]`) so tests can
-// point the guard at a disposable fixture directory instead of the real
-// `apps/tv/dist`. `npm run guard:size` passes no argument, so the default
-// still governs normal use.
+/** The key `budget.json` declares the ceiling under. */
+const BUDGET_KEY = 'tvBundleTransferBytes'
+
 /**
- * The ceiling, normally from `budget.json`. Overridable *only* by the second
- * CLI argument, so a test can prove the guard actually *fails* a bundle that
- * exceeds it: nothing else in the suite pins the rejection path, and a size
- * guard that never rejects is indistinguishable from no guard at all.
+ * The ceiling, normally from `budget.json`.
+ *
+ * Renamed from `tvBundleGzipBytes` when the fonts arrived: the total is no
+ * longer a gzipped figure, and a key that says it is would be the same
+ * understatement this guard just stopped making.
+ *
+ * The key is checked rather than trusted, because a rename that missed one
+ * of the two files would have read `undefined`, compared `NaN` against the
+ * total, found it not greater, and passed every bundle for ever — a size
+ * guard that silently stops guarding is worse than none.
+ *
+ * Overridable *only* by the second CLI argument, so a test can prove the
+ * guard actually *fails* a bundle that exceeds the ceiling: nothing else in
+ * the suite pins the rejection path, and a guard that never rejects is
+ * indistinguishable from no guard at all.
  *
  * Deliberately not readable from the environment. A CLI argument is written
  * at the call site and visible in the command that ran; an environment
@@ -48,7 +95,13 @@ function missingAssetKinds(files) {
  */
 function budgetBytes(override) {
   if (override === undefined) {
-    return JSON.parse(readFileSync('budget.json', 'utf8')).tvBundleGzipBytes
+    const declared = JSON.parse(readFileSync('budget.json', 'utf8'))[BUDGET_KEY]
+    if (!Number.isInteger(declared) || declared <= 0) {
+      throw new Error(
+        `budget.json must declare ${BUDGET_KEY} as a positive whole number of bytes, got ${declared}`,
+      )
+    }
+    return declared
   }
   const parsed = Number(override)
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -57,6 +110,10 @@ function budgetBytes(override) {
   return parsed
 }
 
+// `tvDist` is overridable via a CLI argument (`process.argv[2]`) so tests can
+// point the guard at a disposable fixture directory instead of the real
+// `apps/tv/dist`. `npm run guard:size` passes no argument, so the default
+// still governs normal use.
 function main(tvDist, budgetOverride) {
   const files = assetFiles(tvDist)
   const missing = missingAssetKinds(files)
@@ -68,12 +125,12 @@ function main(tvDist, budgetOverride) {
 
   let total = 0
   for (const file of files) {
-    const size = gzipSizeSync(readFileSync(file))
-    total += size
-    console.log(`${file}: ${size} B gzipped`)
+    const cost = transferCost(file)
+    total += cost.bytes
+    console.log(`${file}: ${cost.bytes} B ${cost.how}`)
   }
 
-  console.log(`Total: ${total} B gzipped. Budget: ${limit} B.`)
+  console.log(`Total: ${total} B transferred. Budget: ${limit} B.`)
 
   if (isOverBudget(total, limit)) {
     throw new Error(`Large-screen bundle is ${bytesOverBudget(total, limit)} B over budget.`)

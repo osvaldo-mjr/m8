@@ -1,9 +1,40 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+
+/**
+ * The ceiling lives in `budget.json` and is read by name from
+ * `check-tv-size.mjs`. Two files, no compiler between them: a rename that
+ * touched one of them would read `undefined`, compare `NaN` against the
+ * total, find it not greater, and pass every bundle from then on. The guard
+ * refuses a budget it cannot read, and this is what would notice.
+ */
+describe('the declared budget', () => {
+  const repoRoot = fileURLToPath(new URL('..', import.meta.url))
+  const budget = JSON.parse(readFileSync(join(repoRoot, 'budget.json'), 'utf8')) as Record<
+    string,
+    unknown
+  >
+  const guardSource = readFileSync(join(repoRoot, 'scripts', 'check-tv-size.mjs'), 'utf8')
+
+  it('declares exactly one ceiling', () => {
+    expect(Object.keys(budget)).toHaveLength(1)
+  })
+
+  it('declares it under the key the guard reads', () => {
+    const key = Object.keys(budget)[0] as string
+    expect(guardSource).toContain(`const BUDGET_KEY = '${key}'`)
+  })
+
+  it('declares it as a positive whole number of bytes', () => {
+    const value = Object.values(budget)[0]
+    expect(Number.isInteger(value)).toBe(true)
+    expect(value as number).toBeGreaterThan(0)
+  })
+})
 
 /**
  * These run the guard as a real subprocess, the way `npm run guard:size`
@@ -60,12 +91,16 @@ describe('the guard script (subprocess)', () => {
     return dir
   }
 
-  it('exits 0 against a valid build and reports the gzipped byte total', () => {
+  it('exits 0 against a valid build and reports the byte total', () => {
     const dir = makeFixtureDir({ 'main.js': 'console.log("tv")', 'main.css': 'body { color: red }' })
     try {
       const result = runGuard(dir)
       expect(result.status).toBe(0)
-      expect(result.stdout).toMatch(/Total: \d+ B gzipped\. Budget: \d+ B\./)
+      // "transferred", not "gzipped": the total now mixes gzipped text with
+      // fonts measured raw, because nothing gzips a woff2 a second time on
+      // the way out and calling that figure gzipped would be a small lie in
+      // the one line anybody reads.
+      expect(result.stdout).toMatch(/Total: \d+ B transferred\. Budget: \d+ B\./)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -120,7 +155,7 @@ describe('the guard script (subprocess)', () => {
     // command, and `npm run guard:size` passes none. An environment variable
     // is invisible at the call site and would let any CI job quietly opt out
     // of the budget the television actually has to live within.
-    const dir = makeFixtureDir({ 'main.js': incompressible(60_000), 'main.css': 'body{color:red}' })
+    const dir = makeFixtureDir({ 'main.js': incompressible(120_000), 'main.css': 'body{color:red}' })
     try {
       const result = spawnSync(process.execPath, [scriptPath, dir], {
         cwd: repoRoot,
@@ -131,6 +166,78 @@ describe('the guard script (subprocess)', () => {
       expect(result.stderr).toMatch(/over budget/)
       // The real budget governed, not the one the environment asked for.
       expect(result.stdout).not.toContain('999999999')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('counts the fonts the screen self-hosts', () => {
+    // The hole this closes: the guard matched `.js` and `.css` only, so the
+    // two woff2 files the television now downloads were invisible to it —
+    // the bundle would be reported as comfortably within budget while the
+    // set fetched twenty kilobytes more. A budget that cannot see the
+    // heaviest asset in the build is not a budget.
+    const font = incompressible(20_000)
+    const withoutFont = makeFixtureDir({ 'main.js': 'console.log("tv")', 'main.css': 'body{}' })
+    const withFont = makeFixtureDir({
+      'main.js': 'console.log("tv")',
+      'main.css': 'body{}',
+      'archivo.woff2': font,
+    })
+    try {
+      const baseline = Number(/Total: (\d+) B/.exec(runGuard(withoutFont).stdout)?.[1])
+      const result = runGuard(withFont)
+      const total = Number(/Total: (\d+) B/.exec(result.stdout)?.[1])
+
+      expect(result.stdout).toContain('archivo.woff2')
+      expect(total - baseline).toBe(font.length)
+    } finally {
+      rmSync(withoutFont, { recursive: true, force: true })
+      rmSync(withFont, { recursive: true, force: true })
+    }
+  })
+
+  it('measures a font raw, because nothing gzips a woff2 a second time', () => {
+    // Fonts carry their own compression. Reporting a gzipped figure for one
+    // would understate what the television actually fetches, which is the
+    // same defect as not measuring it at all, only harder to see.
+    const font = 'x'.repeat(50_000) // gzips to almost nothing; raw is 50 kB
+    const dir = makeFixtureDir({
+      'main.js': 'console.log("tv")',
+      'main.css': 'body{}',
+      'archivo.woff2': font,
+    })
+    try {
+      const result = runGuard(dir, 1_000_000)
+      expect(result.stdout).toMatch(/archivo\.woff2: 50000 B raw/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('exits non-zero when a font alone blows the budget', () => {
+    const dir = makeFixtureDir({
+      'main.js': 'console.log("tv")',
+      'main.css': 'body{}',
+      'archivo.woff2': incompressible(40_000),
+    })
+    try {
+      const result = runGuard(dir, 1_000)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toMatch(/over budget/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not accept a font in place of the bundle', () => {
+    // A build that emitted fonts and nothing else is not a build, and the
+    // fonts must not make the directory look plausibly populated.
+    const dir = makeFixtureDir({ 'archivo.woff2': incompressible(1_000) })
+    try {
+      const result = runGuard(dir)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toMatch(/No JavaScript and no CSS found/)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

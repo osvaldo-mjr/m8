@@ -8,6 +8,7 @@ export default defineConfig({
       '@m8/avatars': fileURLToPath(new URL('./packages/avatars/src/index.ts', import.meta.url)),
       '@m8/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
       '@m8/protocol': fileURLToPath(new URL('./packages/protocol/src/index.ts', import.meta.url)),
+      '@m8/tokens': fileURLToPath(new URL('./packages/tokens/src/index.ts', import.meta.url)),
       '@m8/transport': fileURLToPath(new URL('./packages/transport/src/index.ts', import.meta.url)),
     },
   },

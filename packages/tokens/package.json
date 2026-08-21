@@ -2,7 +2,11 @@
   "name": "@m8/tokens",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "exports": {
-    "./tokens.css": "./tokens.css"
+    ".": "./src/index.ts",
+    "./tokens.css": "./tokens.css",
+    "./fonts.css": "./fonts.css",
+    "./fonts/*": "./fonts/*"
   }
 }

@@ -1,10 +1,51 @@
 @import '@m8/tokens/tokens.css';
+@import '@m8/tokens/fonts.css';
 @import 'tailwindcss';
 
+/*
+ * The phone has none of the television's constraints — it is a browser
+ * somebody is holding, not a set from 2020 — so this file is short: the
+ * tokens, mapped onto Tailwind v4's theme, and the two rules that carry the
+ * identity across.
+ */
 @theme {
-  --color-felt-900: var(--m8-felt-900);
-  --color-felt-700: var(--m8-felt-700);
-  --color-chalk: var(--m8-chalk);
-  --color-brass: var(--m8-brass);
-  --color-clay: var(--m8-clay);
+  --color-ground: var(--m8-ground);
+  --color-table: var(--m8-table);
+  --color-paper: var(--m8-paper);
+  --color-ink: var(--m8-ink);
+
+  --font-display: var(--m8-font-display);
+  --font-text: var(--m8-font-text);
+}
+
+body {
+  font-family: var(--m8-font-text);
+}
+
+/*
+ * The same voice as the eyebrows on the television: expanded black, wide
+ * tracking, and uppercase in the markup rather than by `text-transform`,
+ * because that face is subset to uppercase Latin and digits.
+ */
+.m8-eyebrow {
+  font-family: var(--m8-font-display);
+  letter-spacing: 0.18em;
+}
+
+/*
+ * This person's colour, set once on the shell by the component that knows
+ * where they sit in the snapshot, and read here. It is the same colour their
+ * chip carries on the television, from the same arrival index of the same
+ * message — which is the whole point: the room looks up and sees the coral
+ * one join, and the coral one is holding a coral phone.
+ *
+ * The fallback covers the screens shown before the server has answered at
+ * all — connecting, or an error — where there is no seat and so no colour.
+ */
+.m8-person-bg {
+  background-color: var(--m8-person, var(--m8-person-1));
+}
+
+.m8-person-text {
+  color: var(--m8-person, var(--m8-person-1));
 }

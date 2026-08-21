@@ -1,11 +1,55 @@
+/*
+ * Every colour M8 has, defined once.
+ *
+ * Nothing else in the repository may write a colour value: the two apps run
+ * on two different Tailwind majors and a hex repeated in either of them would
+ * be a copy that nobody notices has drifted. Both read these.
+ *
+ * The palette is doing structural work, not decoration. `--m8-person-1`
+ * through `--m8-person-8` are handed out by arrival order and follow one
+ * person across both screens — their phone is themed in their colour and
+ * their chip on the television is that colour — so a room can see who just
+ * joined from three metres, where no nickname is readable.
+ *
+ * There is deliberately no neutral surface here: no white card, no grey
+ * panel. `--m8-paper` is an object placed on the table (the code tiles, the
+ * QR), never a background.
+ *
+ * Flat fills only. No gradient tokens: televisions apply their own colour
+ * processing and gradients band badly on them.
+ */
 :root {
-  --m8-felt-900: #0d2018;
-  --m8-felt-700: #14332a;
-  --m8-felt-500: #1d4a3c;
-  --m8-chalk: #f4f1e8;
-  --m8-brass: #d8a657;
-  --m8-clay: #c3524a;
-  --m8-ash: #7a8b85;
+  /** The room behind the table. */
+  --m8-ground: #180a3a;
+  /** The lit surface things are laid out on. */
+  --m8-table: #3b1b99;
+  /** Pieces and the QR only. Never a panel. */
+  --m8-paper: #fff6ec;
+  /** Characters printed on a piece: the ground colour, on paper. */
+  --m8-ink: var(--m8-ground);
 
+  --m8-person-1: #ff5b4a;
+  --m8-person-2: #2bd9e4;
+  --m8-person-3: #c6f24e;
+  --m8-person-4: #ff63c1;
+  --m8-person-5: #ffb020;
+  --m8-person-6: #9b7bff;
+  --m8-person-7: #3dd68c;
+  --m8-person-8: #4c8dff;
+
+  /*
+   * One Archivo family, two voices that look nothing like each other: the
+   * expanded black for the four code characters and the small uppercase
+   * eyebrows, the normal-width medium for everything a person typed.
+   *
+   * The fallbacks matter. `@m8/tokens/fonts.css` self-hosts both faces
+   * because the television may have no route to the internet at all, and the
+   * black instance carries only uppercase Latin and digits — anything else
+   * set in it (there should be nothing) falls through to these.
+   */
+  --m8-font-display: 'Archivo Expanded', 'Arial Black', 'Helvetica Neue', Arial, sans-serif;
+  --m8-font-text: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+
+  /** Televisions crop the outer edge of the picture. Nothing may live in it. */
   --m8-safe-inset: 5%;
 }

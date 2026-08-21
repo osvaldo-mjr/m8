@@ -17,7 +17,15 @@ connectScreen((message) => {
     return
   }
   if (message.type === 'tableState') {
-    renderTable(root, { code, participants: message.table.participants })
+    // The address is read from the page's own location for the same reason
+    // the QR is built from the request's host: it is the address this screen
+    // was actually reached at, so it can never tell the room to type
+    // `localhost` into a phone.
+    renderTable(root, {
+      code,
+      address: window.location.host,
+      participants: message.table.participants,
+    })
     return
   }
   if (message.type === 'error') {

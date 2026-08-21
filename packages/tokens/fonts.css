@@ -1,0 +1,40 @@
+/*
+ * Archivo, self-hosted.
+ *
+ * Not a webfont from a CDN: the television runs on a home LAN that may have
+ * no route to the internet at all, and a font request that hangs is a screen
+ * that shows nothing where the table code should be.
+ *
+ * Static instances, not the variable font. Variable Archivo works on the
+ * target, but a font format the browser has to interpolate is risk taken for
+ * nothing on a device whose developer tools cannot be opened.
+ *
+ * Two families rather than one family with two weights, because matching a
+ * face by `font-weight` and `font-stretch` is a decision the browser makes
+ * and these are the names the static instances themselves carry. Each is
+ * declared at weight 400 so nothing is ever synthetically emboldened.
+ *
+ * Both files are subsets produced by the Google Fonts service:
+ *   - Archivo Expanded Black: space, A-Z, 0-9 and the uppercase accented
+ *     letters pt-BR needs. It renders the code tiles and the eyebrows, and
+ *     both are uppercase by construction.
+ *   - Archivo Medium: the Latin subset. It renders nicknames, which are typed
+ *     by strangers, so it cannot be subset to a known string.
+ *
+ * SIL Open Font License 1.1 — see ./fonts/OFL.txt.
+ */
+@font-face {
+  font-family: 'Archivo Expanded';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./fonts/archivo-expanded-black.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/archivo-medium.woff2') format('woff2');
+}

@@ -1,15 +1,383 @@
 @import '@m8/tokens/tokens.css';
+@import '@m8/tokens/fonts.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * Overscan: many televisions crop the outer edge of the picture, so nothing
- * may live in the outer 5%.
+ * The large screen, written by hand on top of Tailwind's reset.
  *
- * Margins are used rather than flexbox gap, which needs Chromium 84.
+ * Everything below is checked against Chromium 68 to 79, which is what a
+ * Samsung Tizen or LG webOS set from around 2020 is running. The rules that
+ * cost the most to discover:
+ *
+ *   - no `clamp()`, `min()` or `max()` (Chromium 79), so sizes are fixed and
+ *     a media query moves between resolutions;
+ *   - no `aspect-ratio` (88), so the tiles carry an explicit width and height;
+ *   - no `gap` in flexbox (84) — `gap` in *grid* has worked since 66 and would
+ *     be safe, but margins are used for spacing everywhere regardless: the
+ *     distinction is a trap, and someone changing a `grid` to a `flex` later
+ *     would silently lose every space on the television with nothing in the
+ *     diff connecting cause to effect;
+ *   - no `:is()` or `:where()` (88), no `inset` shorthand (87), no
+ *     `backdrop-filter`.
+ *
+ * Every size lives in a custom property, defined twice: once for a 1280-wide
+ * screen and once for a 1920-wide one. Custom properties are Chromium 49.
+ */
+:root {
+  --m8-tile-size: 132px;
+  --m8-tile-type: 88px;
+  --m8-tile-radius: 14px;
+  --m8-piece-gap: 20px;
+  --m8-qr-size: 232px;
+  --m8-qr-padding: 18px;
+  --m8-qr-radius: 14px;
+  --m8-table-radius: 32px;
+  --m8-block-gap: 72px;
+  --m8-wordmark-type: 44px;
+  --m8-eyebrow-type: 22px;
+  --m8-address-type: 28px;
+  --m8-headline-type: 64px;
+  --m8-message-type: 32px;
+  --m8-disc-size: 60px;
+  --m8-disc-type: 32px;
+  --m8-disc-border: 5px;
+  --m8-name-type: 30px;
+  --m8-note-type: 18px;
+  --m8-chip-gap: 44px;
+  --m8-row-gap: 32px;
+}
+
+@media (min-width: 1600px) {
+  :root {
+    --m8-tile-size: 224px;
+    --m8-tile-type: 152px;
+    --m8-tile-radius: 22px;
+    --m8-piece-gap: 26px;
+    --m8-qr-size: 380px;
+    --m8-qr-padding: 26px;
+    --m8-qr-radius: 22px;
+    --m8-table-radius: 48px;
+    --m8-block-gap: 100px;
+    --m8-wordmark-type: 64px;
+    --m8-eyebrow-type: 30px;
+    --m8-address-type: 40px;
+    --m8-headline-type: 92px;
+    --m8-message-type: 44px;
+    --m8-disc-size: 96px;
+    --m8-disc-type: 50px;
+    --m8-disc-border: 7px;
+    --m8-name-type: 46px;
+    --m8-note-type: 26px;
+    --m8-chip-gap: 64px;
+    --m8-row-gap: 44px;
+  }
+}
+
+/*
+ * The reset, in full. Tailwind's preflight is switched off in
+ * `tailwind.config.js` because it emits a `:where()` selector that a 2020
+ * television cannot parse, so everything this screen relies on is here.
+ *
+ * There is nothing to reset that this screen does not itself draw: it
+ * renders `div`, `p`, `ul`, `li`, `span` and one `img`, and that is the
+ * whole document.
+ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+p,
+ul,
+li {
+  margin: 0;
+  padding: 0;
+}
+
+ul {
+  list-style: none;
+}
+
+img {
+  display: block;
+}
+
+/*
+ * Overscan: many televisions crop the outer edge of the picture, so nothing
+ * may live in the outer 5%. A percentage padding resolves against the width
+ * on all four sides, which is what is wanted here — the horizontal crop is
+ * the larger one.
  */
 .m8-safe {
+  display: block;
+  height: 100%;
   padding: var(--m8-safe-inset);
+}
+
+.m8-stage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.m8-eyebrow-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.m8-wordmark {
+  font-family: var(--m8-font-display);
+  font-size: var(--m8-wordmark-type);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--m8-paper);
+}
+
+.m8-eyebrow {
+  font-family: var(--m8-font-display);
+  font-size: var(--m8-eyebrow-type);
+  line-height: 1;
+  letter-spacing: 0.22em;
+  color: var(--m8-paper);
+}
+
+/*
+ * The table: a flat, rigid, perfectly square surface, clearly lighter than
+ * the room behind it. It is the one thing here that is never turned — the
+ * contrast between a rigid surface and things casually put down on it is
+ * what makes the arrangement read as real rather than as a filter.
+ */
+.m8-table {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--m8-row-gap);
+  background-color: var(--m8-table);
+  border-radius: var(--m8-table-radius);
+}
+
+.m8-code-block {
+  margin-right: var(--m8-block-gap);
+}
+
+.m8-code {
+  display: flex;
+  align-items: center;
+}
+
+/*
+ * One tile per character, because a table code is not a word: every
+ * character of it is read out on its own and typed on its own, which is why
+ * the alphabet has no O, no I, no zero and no one.
+ *
+ * Explicit width and height, never `aspect-ratio`: Chromium 88.
+ */
+.m8-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m8-tile-size);
+  height: var(--m8-tile-size);
+  margin-right: var(--m8-piece-gap);
+  border-radius: var(--m8-tile-radius);
+  background-color: var(--m8-paper);
+  color: var(--m8-ink);
+  font-family: var(--m8-font-display);
+  font-size: var(--m8-tile-type);
+  line-height: 1;
+}
+
+.m8-tile:last-child {
+  margin-right: 0;
+}
+
+.m8-address {
+  margin-top: var(--m8-row-gap);
+  font-family: var(--m8-font-text);
+  font-size: var(--m8-address-type);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--m8-paper);
+}
+
+.m8-qr {
+  padding: var(--m8-qr-padding);
+  border-radius: var(--m8-qr-radius);
+  background-color: var(--m8-paper);
+}
+
+.m8-qr img {
+  display: block;
+  width: var(--m8-qr-size);
+  height: var(--m8-qr-size);
+}
+
+/*
+ * The people sit around the table, along its near edge, in arrival order.
+ *
+ * The row wraps. A table holds eight, a nickname holds sixteen characters,
+ * and eight of those do not fit across 1728px of safe area at a size that
+ * can be read from three metres — so the choice is between wrapping and
+ * running off the edge of a screen that also crops its own edges. The table
+ * above shrinks to pay for the second row, which is what `flex: 1 1 auto`
+ * on it is for.
+ *
+ * The vertical space between the table and the people, and between two rows
+ * of people, is one margin on the chips rather than a margin under the
+ * table: with a single row the two are indistinguishable, and with two rows
+ * only this version spaces them.
+ *
+ * `min-height` keeps the empty row the height it will have once somebody
+ * joins, so the table does not jump when the first person does.
+ */
+.m8-people {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: calc(var(--m8-disc-size) + var(--m8-row-gap));
+}
+
+.m8-chip {
+  display: flex;
+  align-items: center;
+  margin-top: var(--m8-row-gap);
+  margin-right: var(--m8-chip-gap);
+}
+
+.m8-chip:last-child {
+  margin-right: 0;
+}
+
+/*
+ * The disc carries both halves of who somebody is: the colour that is theirs
+ * on this screen and on their own phone, and the avatar they chose. The
+ * colour arrives as `--m8-person`, written onto the element by the renderer.
+ */
+.m8-chip-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--m8-disc-size);
+  height: var(--m8-disc-size);
+  margin-right: calc(var(--m8-disc-size) / 4);
+  border-radius: 50%;
+  border: var(--m8-disc-border) solid var(--m8-person);
+  background-color: var(--m8-person);
+  font-size: var(--m8-disc-type);
+  line-height: 1;
+}
+
+.m8-chip-name {
+  font-family: var(--m8-font-text);
+  font-size: var(--m8-name-type);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--m8-paper);
+}
+
+/*
+ * Somebody who dropped: the disc empties out to an outline of their own
+ * colour, so it is a hole in the row rather than a slightly different chip.
+ * This was a real bug found on real hardware — a marker only in an attribute
+ * is not a signal to anybody standing three metres away.
+ */
+.m8-chip-away .m8-chip-disc {
+  background-color: transparent;
+}
+
+.m8-chip-note {
+  margin-left: calc(var(--m8-disc-size) / 4);
+  white-space: nowrap;
+  font-family: var(--m8-font-display);
+  font-size: var(--m8-note-type);
+  line-height: 1;
+  letter-spacing: 0.18em;
+  color: var(--m8-person);
+}
+
+/*
+ * The only animation in the product, and it has a job: the person who has
+ * just scanned the code is looking up at the television to find out whether
+ * their phone connected, and this is the confirmation. It is on `.m8-chip`
+ * itself because the renderer reuses chip elements — an element being
+ * created and a person arriving are now the same event.
+ *
+ * The media query below is honoured from Chromium 74. The declared floor for
+ * this screen is 68, and on 68 to 73 the query does not exist, so the rule
+ * never matches and the animation plays regardless of the setting.
+ */
+@keyframes m8-arrive {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.m8-chip {
+  animation: m8-arrive 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m8-chip {
+    animation: none;
+  }
+}
+
+/* The waiting and error screens: the same room, the same surface, no code. */
+.m8-table-message {
+  flex-direction: column;
+  text-align: center;
+}
+
+.m8-headline {
+  font-family: var(--m8-font-display);
+  font-size: var(--m8-headline-type);
+  line-height: 1.1;
+  letter-spacing: 0.06em;
+  color: var(--m8-paper);
+}
+
+.m8-headline-alarm {
+  color: var(--m8-person-1);
+}
+
+.m8-message {
+  margin-top: var(--m8-row-gap);
+  font-family: var(--m8-font-text);
+  font-size: var(--m8-message-type);
+  color: var(--m8-paper);
+}
+
+/*
+ * The error code. A television has no console and no way to be inspected
+ * from the sofa, so this line is the entire diagnostic surface: it is small
+ * because it is not for the room, and it is on screen because otherwise
+ * nobody can ever say what went wrong.
+ */
+.m8-code-line {
+  margin-top: var(--m8-row-gap);
+  font-family: var(--m8-font-text);
+  font-size: var(--m8-note-type);
+  letter-spacing: 0.22em;
+  color: var(--m8-paper);
 }

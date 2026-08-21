@@ -7,6 +7,7 @@
       "@m8/avatars": ["./packages/avatars/src/index.ts"],
       "@m8/core": ["./packages/core/src/index.ts"],
       "@m8/protocol": ["./packages/protocol/src/index.ts"],
+      "@m8/tokens": ["./packages/tokens/src/index.ts"],
       "@m8/transport": ["./packages/transport/src/index.ts"]
     }
   },
