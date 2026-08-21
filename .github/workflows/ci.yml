@@ -42,7 +42,7 @@ jobs:
       # Building is not running. The server starts through `tsx`, which is a
       # dependency of apps/server that nothing in apps/server imports - so
       # moving it back to devDependencies looks like a correct tidy-up, and
-      # npm ci, the typecheck, the whole suite, both guards and the image
+      # npm ci, the typecheck, the whole suite, all three guards and the image
       # build above would all stay green while the container died at start
       # with `Cannot find package 'tsx'`. This step is what notices.
       - name: Run the image and prove it serves

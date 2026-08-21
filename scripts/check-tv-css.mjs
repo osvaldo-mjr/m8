@@ -52,6 +52,19 @@ function pseudo(name) {
  * direction: v4 needs Chrome 111, and `@layer`, `oklch()`, `color-mix()` and
  * `@property` are what it would announce itself with if `apps/tv` were ever
  * moved onto it by a well-meaning dependency update.
+ *
+ * This list is closed, not exhaustive: roughly two dozen named constructs,
+ * matched by name. Anything not on it passes clean, however ordinarily it is
+ * spelled. `margin-inline-start` (Chromium 87 — precisely what Tailwind v3's
+ * `ms-*` and `me-*` utilities emit) and `text-wrap: balance` (114, from v3.4's
+ * `text-balance`) both pass today, and so do `inset-inline`,
+ * `content-visibility`, `accent-color`, `translate`, `::marker`, unprefixed
+ * `appearance` and `grid-gap`. The first two are exactly the "a Tailwind minor
+ * bump arrives and nothing in the diff looks wrong" route this guard exists to
+ * close. Parsing would not fix this — the problem is not tokenising CSS, it is
+ * coverage of what to look for — so if this is ever strengthened, the
+ * direction is a browser-support database (browserslist, doiuse,
+ * postcss-preset-env), not a parser.
  */
 export const UNSUPPORTED_CSS = [
   { what: ':is()', since: 88, pattern: pseudo('is') },

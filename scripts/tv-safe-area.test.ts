@@ -138,6 +138,19 @@ describe('the screen at every number of people the table holds', () => {
   }
 
   /**
+   * The percentage a cap is written against, whether the declaration is a
+   * bare `25%` or, as `.m8-chip`'s is, `calc(25% - 1px)` — the 1px is a
+   * sub-pixel-rounding safety margin invisible to this model, which reasons
+   * in exact percentages of the row.
+   */
+  function percent(body: string, property: string): number {
+    const value = declaration(body, property)
+    const match = /(\d+(?:\.\d+)?)%/.exec(value)
+    if (match === null || match[1] === undefined) throw new Error(`No percentage in ${property}: ${value}`)
+    return Number.parseFloat(match[1])
+  }
+
+  /**
    * The two tiers of sizes: the base `:root`, and the `:root` inside the
    * `min-width: 1600px` query that a 1920-wide screen also matches.
    */
@@ -145,7 +158,7 @@ describe('the screen at every number of people the table holds', () => {
   const [base, large] = [roots[0] ?? '', roots[1] ?? '']
 
   const chipRule = rule(styles, '.m8-chip')
-  const chipCapPercent = Number.parseFloat(declaration(chipRule, 'max-width'))
+  const chipCapPercent = percent(chipRule, 'max-width')
   const perRow = chipsPerRow(chipCapPercent)
   const insetRatio = Number.parseFloat(declaration(rule(tokens, ':root'), '--m8-safe-inset')) / 100
 
@@ -232,13 +245,31 @@ describe('the screen at every number of people the table holds', () => {
    */
   describe('the stylesheet facts the arithmetic rests on', () => {
     it('caps the chip and clips what will not fit', () => {
-      expect(declaration(chipRule, 'max-width')).toBe(`${chipCapPercent}%`)
+      // A bare `${chipCapPercent}%` would also let four chips at exactly the
+      // cap sum to exactly the width of the line — the sub-pixel wrap this
+      // guards against. The one-pixel shave is part of what is being pinned.
+      expect(declaration(chipRule, 'max-width')).toBe(`calc(${chipCapPercent}% - 1px)`)
       expect(declaration(chipRule, 'overflow')).toBe('hidden')
       // The space between chips is inside the cap. Four chips of a quarter
       // each plus four margins is more than a line holds, and the fourth
       // would wrap.
       expect(declaration(chipRule, 'padding-right')).toBe('var(--m8-chip-gap)')
       expect(chipRule).not.toContain('margin-right')
+    })
+
+    it('keeps the disc a fixed square rather than letting the cap shrink it', () => {
+      // The chip is deliberately over-constrained by the cap above, and a
+      // flex item's default is to give up width first once its line has no
+      // room left. Without `flex: 0 0 auto` here the disc's width is what
+      // gives — drawn as an ellipse, not a circle, at eight people even
+      // though nothing else about its box changed. This is the one fix in
+      // the round that shipped without a test; the safe-area model is
+      // height-only and cannot see a width-only shrink, so it is pinned
+      // directly against the declaration instead.
+      const discBody = rule(styles, '.m8-chip-disc')
+      expect(declaration(discBody, 'flex')).toBe('0 0 auto')
+      expect(declaration(discBody, 'width')).toBe('var(--m8-disc-size)')
+      expect(declaration(discBody, 'height')).toBe(declaration(discBody, 'width'))
     })
 
     it('lets the text inside the chip narrow rather than push it wider', () => {

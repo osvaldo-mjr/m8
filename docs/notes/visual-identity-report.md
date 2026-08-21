@@ -635,7 +635,10 @@ and `lowercase` came out of prose in the tests. All of them shipped to the
 television as real rules — bytes off the budget, and selectors on the new
 guard's surface, for classes nothing renders. `'!./src/**/*.test.ts'` removes
 `.p-1`, `.p-2`, `.p-3`, `.lowercase` and `.filter` (and with `.filter` gone, the
-`::backdrop` and `::-ms-backdrop` variable blocks it dragged in).
+`::-ms-backdrop` variable block it dragged in — `::backdrop` itself is still in
+the shipped stylesheet, one occurrence, harmless in itself since it is
+Chromium 37, but worth stating correctly in a document that is the record of a
+correction round).
 `scripts/tv-tailwind-config.test.ts` resolves the patterns with `fast-glob` —
 the same library Tailwind resolves them with, now a declared root
 devDependency rather than a borrowed transitive one — and asserts that
@@ -678,10 +681,21 @@ move.
 - **Still nothing has been on a real television.** Everything above was
   measured in Chromium on a PC. `docs/tv-smoke-test.md` steps 10 to 13 remain
   unrun.
-- **The CSS guard is a text scan, not a parse.** That is the right trade for
-  catching a construct arriving from a dependency, and the three helpers above
-  are where its false positives were fixed — but a selector spelled unusually
-  by a future minifier could slip past it. It is a floor, not a proof.
+- **The CSS guard is a closed list, not a parse.** It matches roughly two
+  dozen named constructs; anything not on the list passes regardless of how
+  ordinarily it is spelled. `margin-inline-start` (Chromium 87 — precisely
+  what Tailwind v3's `ms-*` and `me-*` utilities emit) and `text-wrap:
+  balance` (114, from v3.4's `text-balance`) both pass clean today, and so do
+  `inset-inline`, `content-visibility`, `accent-color`, `translate`,
+  `::marker`, unprefixed `appearance` and `grid-gap`. The first two are
+  exactly the "a Tailwind minor bump arrives and nothing in the diff looks
+  wrong" route this guard exists to close. Parsing would not fix this — the
+  problem is not tokenising CSS (that is why the syntax guard beside it needs
+  a real parser: JavaScript text is genuinely ambiguous, which is why a naive
+  search for `?.` trips over `?.5`) but coverage of what to look for. If this
+  is ever strengthened, the direction is a browser-support database
+  (browserslist, doiuse, postcss-preset-env), not a parser. It is a floor,
+  not a proof.
 - **The safe-area test models boxes, not glyphs.** It cannot know how wide a
   word is. The layout was made content-independent so that it does not have to,
   and the one place a glyph width still matters — whether `RECONNECTING` fits
@@ -696,3 +710,92 @@ move.
   table-stays-square test still cannot see a real transform under jsdom, and the
   historical plan document still names the old budget key. All three were
   carried deliberately and are not touched here.
+
+## A second correction round, closing the review's residual findings
+
+Five small findings from the review that approved the previous round for
+pushing, addressed here. At the moment of writing, the working tree is clean
+against `8d221e2` other than the changes below.
+
+**1. `README.md` claimed the CSS guard parses.** It scans stripped text — the
+guard's own file says so, and this document now says so above. "Parses" is
+now "scans" on the line that names all three guards.
+
+**2. The CSS guard's stated limitation named the wrong axis.** It said a
+selector spelled unusually could slip past — the small hole. The real one is
+that the guard is a closed list of roughly two dozen named constructs, and
+anything not on the list passes regardless of spelling. Checked against the
+list in `scripts/check-tv-css.mjs`: `margin-inline-start` (Chromium 87,
+exactly what Tailwind v3's `ms-*`/`me-*` utilities emit), `text-wrap: balance`
+(114, from v3.4's `text-balance`), `inset-inline`, `content-visibility`,
+`accent-color`, `translate`, `::marker`, unprefixed `appearance` and
+`grid-gap` all pass the guard as it stands today — confirmed by reading the
+pattern list rather than assumed. The docstring above `UNSUPPORTED_CSS` in
+`scripts/check-tv-css.mjs` and the "Not verified" entry above now both say
+this honestly, name `margin-inline-start` and `text-wrap` as the two that
+matter most (the "nothing in the diff looks wrong" route), and record that a
+browser-support database — browserslist, doiuse, postcss-preset-env — is the
+direction if this is ever strengthened, not a parser: the guard's problem is
+coverage, not tokenising, which is the opposite of why the syntax guard beside
+it needs a real parser. No database was added; that is a larger piece of work
+than a correction round carries.
+
+**3. Two stale sentences.** `.github/workflows/ci.yml` said "both guards" in
+a comment; there are three now, so it says "all three guards". This document
+said excluding tests from the Tailwind content glob removed both the
+`::backdrop` and `::-ms-backdrop` blocks; only the second is true.
+`::-ms-backdrop` is gone. `::backdrop` is still in the shipped stylesheet —
+one occurrence, confirmed with a grep against
+`apps/tv/dist/assets/index-*.css` after a fresh build. Harmless in itself
+(Chromium 37), but this document is the record of a correction round, so the
+paragraph now says so correctly.
+
+**4. `.m8-chip-disc`'s `flex: 0 0 auto` shipped without a guard.** Every other
+fix in the previous round pinned the regression it repaired; this one did
+not, because the safe-area model is height-only and cannot see a width-only
+shrink. `scripts/tv-safe-area.test.ts` gained
+`'keeps the disc a fixed square rather than letting the cap shrink it'`,
+asserting `flex: 0 0 auto` and that `width` and `height` both read
+`var(--m8-disc-size)` — reading the declaration text the same way every other
+stylesheet-facts test in that file already does, not attempting layout in
+jsdom.
+
+**5. The sub-pixel wrap risk was real, and worth removing.** Four chips at
+exactly `max-width: 25%` sum to exactly the width of the line. At a screen
+width where the 5% inset and a quarter of what remains do not divide into
+whole pixels — 1366×768 is the plausible member of the old target set —
+per-item rounding could push the fourth chip's rendered width a fraction over
+budget, which is the three-line overflow this cap exists to prevent. Both
+design resolutions (1152px and 1728px safe width) divide by four exactly, and
+the safe-area arithmetic reasons in exact percentages, so neither would show
+it. Changed `.m8-chip`'s cap to `calc(25% - 1px)`, with a comment in
+`apps/tv/src/styles.css` recording why. `calc()` is unconditionally safe on
+the Chromium 68 floor and is already used elsewhere in the same file.
+
+The test needed adjusting, not just re-running: `chipCapPercent` was read
+with a bare `Number.parseFloat` on the `max-width` declaration, which returns
+`NaN` against `calc(25% - 1px)` because the value no longer starts with a
+digit. Added a `percent()` helper beside the existing `pixels()` one that
+pulls the percentage out of either a bare `25%` or a `calc()` expression by
+regex, and used it in place of the direct parse. The exact-value assertion in
+`'caps the chip and clips what will not fit'` was tightened from `` `${chipCapPercent}%` ``
+to `` `calc(${chipCapPercent}% - 1px)` ``, so the test pins the one-pixel
+shave itself rather than merely surviving it. `chipsPerRow`'s own model
+still reasons in the nominal 25% — the 1px is a rendering safety margin
+invisible to a model that works in exact percentages, and it only tightens
+the real cap relative to the model, never loosens it, so nothing the model
+already proved stops holding.
+
+**Verified**, through PowerShell (the sandboxed Bash tool still kills vitest
+workers and reports zero tests, per the known environment defect):
+
+- `npm test` — **476 passed, 33 files** (475 plus the new disc-square test).
+- `npm run typecheck` — clean across all three projects. (One intermediate
+  failure while writing the new test: a `RegExpExecArray` index access typed
+  as `string | undefined` without the same guard the neighbouring
+  `declaration()` helper already carries. Fixed by adding the same
+  `match[1] === undefined` check before use; typecheck was clean before this
+  round and is clean again now.)
+- `npm run guards` — ES2017 syntax check passed; Chromium 68 CSS check
+  passed; size **38,172 B** against the 42,000 B ceiling (up 7 B from 38,165 B
+  — the `calc(25% - 1px)` bytes, gzipped).

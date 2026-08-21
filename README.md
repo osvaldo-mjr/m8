@@ -27,7 +27,7 @@ no seats, no turns, no rules.
 transport, integration tests proving the real Socket.IO transport honours the
 same contract, and a set of guards over the build itself. Three of those run on
 every push — one confirms the large-screen bundle compiles to syntax the old
-television targets can execute, one parses the emitted stylesheet and rejects
+television targets can execute, one scans the emitted stylesheet and rejects
 CSS newer than those sets can run, and the third holds everything the
 television downloads under a 42,000-byte budget, currently measured at 38,165
 bytes (code and stylesheet gzipped, the two self-hosted font files as they are

@@ -296,12 +296,20 @@ img {
  *
  * `overflow: hidden` is the other half of the cap: without it, content wider
  * than the quarter is clipped by nothing and paints over the chip beside it.
+ *
+ * The quarter is `calc(25% - 1px)`, not a bare `25%`. Four chips at exactly a
+ * quarter fill the line exactly, and at a width where 5% of the screen and a
+ * quarter of what is left do not divide into whole pixels, per-item rounding
+ * can push their sum a fraction over the line — which is the fourth chip
+ * wrapping, the three-line overflow this cap exists to prevent. Both design
+ * resolutions happen to divide evenly and would not show it. The one pixel
+ * shaved off is not visible at three metres and costs nothing the row needs.
  */
 .m8-chip {
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-  max-width: 25%;
+  max-width: calc(25% - 1px);
   overflow: hidden;
   margin-top: var(--m8-row-gap);
   padding-right: var(--m8-chip-gap);
