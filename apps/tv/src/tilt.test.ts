@@ -60,9 +60,11 @@ function everyPlacement(): PiecePlacement[] {
  *
  * 810,000 codes, computed once and shared by every assertion below, because
  * the questions that matter here are about the *distribution* and a sample of
- * nine hundred structured codes cannot answer them. It takes about two
- * seconds, which is the price of the one guard in this repository that can
- * tell a scattered arrangement from a patterned one.
+ * nine hundred structured codes cannot answer them. It takes roughly a
+ * second — measured at 978-1036ms across three runs, of which the
+ * `arrangePieces` calls alone are 719-757ms — which is the price of the one
+ * guard in this repository that can tell a scattered arrangement from a
+ * patterned one.
  *
  * The worst pair of each kind is kept, not just the minimum, so a failure
  * says which arrangement broke the rule rather than only that one did.

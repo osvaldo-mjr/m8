@@ -90,6 +90,13 @@ supported on Chromium 68, and none has an experiment behind it.
     make it a table rather than a coloured rectangle; a set that drops
     `box-shadow` would leave the tilt reading as a layout mistake, and one
     that drops the `border-bottom` would leave the table flat.
+15. On the phone, before joining, tap through the avatar picker (`YOUR FACE`)
+    and confirm the chosen tile is marked by a visible border, not only by a
+    change of fill colour. `apps/phone` has no DOM test, so this step is the
+    only guard against the selection cue going quiet again: it already
+    happened once, silently, when the palette changed and the chosen tile's
+    fill dropped as low as 1.65:1 against an unchosen one for three of eight
+    avatars — caught only because the owner looked at a phone.
 
 ## What to record on failure
 

@@ -200,7 +200,7 @@ function hash(code: string, pieceIndex: number, field: number): number {
  * is not, and drawing one through this function is what `turn` below exists
  * to correct — read that first.
  *
- * A lift keeps at least four of its seven values and a gap at least two of
+ * A lift keeps at least four of its seven values and a gap at least three of
  * its four, so neither filter can come back empty; the fallback is there so
  * that a range narrowed later fails as a slightly duller table rather than as
  * a blank screen on the one thing the room is looking at, and

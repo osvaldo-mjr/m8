@@ -19,3 +19,25 @@ export function describeProfileSubmission(nickname: string): ProfileSubmission {
   }
   return { canSubmit: true, reason: null }
 }
+
+/**
+ * The two classes an avatar tile in the picker may carry.
+ *
+ * Pulled out of `App.tsx` as a pure function so the selection cue has a
+ * guard at all: `apps/phone` has no DOM testing library and this repository
+ * is not taking one on for one component, so a rendered assertion is not an
+ * option. What broke once already is testable without one — the chosen tile
+ * was marked by `m8-person-bg` alone, which is a fill colour, and the fill
+ * against the palette that replaced violet dropped as low as 1.65:1 for
+ * three of eight avatars. Nothing caught it before the owner did by eye. The
+ * fix added a border in the paper colour, constant regardless of which fill
+ * is behind it, and this function is what keeps that border from being
+ * silently dropped in the same way: it does not check contrast, only that
+ * the chosen tile still carries a cue the fill is not.
+ */
+export const AVATAR_TILE_CHOSEN_CLASS = 'm8-person-bg rounded-2xl border-4 border-paper py-6 text-4xl'
+export const AVATAR_TILE_UNCHOSEN_CLASS = 'rounded-2xl border-4 border-transparent bg-table py-6 text-4xl'
+
+export function avatarTileClassName(chosen: boolean): string {
+  return chosen ? AVATAR_TILE_CHOSEN_CLASS : AVATAR_TILE_UNCHOSEN_CLASS
+}

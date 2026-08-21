@@ -3,7 +3,7 @@ import { NICKNAME_MAX_LENGTH, type ErrorCode, type ServerToClient, type TableSna
 import { PERSON_COLOR_PROPERTY, personColor } from '@m8/tokens'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { codeFromLocation, connectPhone, type PhoneClient } from './client.js'
-import { describeProfileSubmission } from './profile.js'
+import { avatarTileClassName, describeProfileSubmission } from './profile.js'
 import { determineScreen, errorText } from './screen.js'
 
 /**
@@ -162,11 +162,7 @@ export function App() {
                   key={avatar.id}
                   type="button"
                   aria-pressed={avatar.id === avatarId}
-                  className={
-                    avatar.id === avatarId
-                      ? 'm8-person-bg rounded-2xl border-4 border-paper py-6 text-4xl'
-                      : 'rounded-2xl border-4 border-transparent bg-table py-6 text-4xl'
-                  }
+                  className={avatarTileClassName(avatar.id === avatarId)}
                   onClick={() => setAvatarId(avatar.id)}
                 >
                   {avatar.glyph}

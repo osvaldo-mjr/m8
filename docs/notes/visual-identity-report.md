@@ -926,6 +926,16 @@ about *neighbours*, placement became a whole-table function,
 > *The scatter was still patterned* below — where the angle mechanism is
 > replaced outright, and the paragraph above stops describing how an angle is
 > drawn. It still describes the lift and the gap correctly.
+>
+> **Re-verified 2026-08-21.** Computed directly over every value in
+> `LIFTS` and `SPACES` as `previous`, rather than trusted: the lift survivor
+> count by previous value is **5, 4, 4, 4, 4, 4, 5** for `previous` running
+> −3 to +3, so "at least four of seven" is exact. The gap survivor count is
+> **3, 3, 3, 3** for `previous` running 0 to 3, so "at least three of four" is
+> exact too — every previous value keeps exactly three, never more, never
+> fewer. `apps/tv/src/tilt.ts` had drifted to say "at least two of its four"
+> for the gap, disagreeing with this document's own "three of four" two
+> paragraphs up; corrected in place to match what is measured here.
 
 Everything that made the old tilt good survives, and is still asserted: it is
 a pure function of the table code, so the same table always arranges itself
@@ -1326,8 +1336,13 @@ written specifically to cover this mechanism.
 
 `apps/tv/src/tilt.test.ts` now sweeps **all 810,000 codes** in one pass,
 computes the distribution once, and shares it across the assertions. Roughly
-200ms, and it is the same code space the figures above were measured over, so
-CI and this document cannot report different numbers.
+one second — 978, 985 and 1,036ms across three standalone runs of the survey
+verbatim, of which the `arrangePieces` calls alone are 719-757ms — and it is
+the same code space the figures above were measured over, so CI and this
+document cannot report different numbers. "200ms" was measured wrong: it is
+vitest's own reported test-execution time, which excludes the survey because
+it runs once at collection time, outside any `it()` block, so it never shows
+up as time spent "in a test".
 
 | Assertion | Ceiling / floor | Measured | Was |
 |---|---|---|---|
@@ -1422,6 +1437,18 @@ fix *reads* as scattered, and a distribution cannot answer that. Three of the
 twelve alternated outright, which is 25% against an expected 16.2% and inside
 the noise of twelve draws.
 
+> **Correction, 2026-08-21.** Only seven of the twelve rows were ever printed
+> below, and the codes for the other five were not kept anywhere in this
+> document — they cannot be reconstructed, and reprinting five different
+> codes now would not be the same experiment. So the 25%-against-16.2%
+> comparison is not something a reader of this document can check; what the
+> seven printed rows below actually support is narrower and is stated where
+> they are discussed: three of three printed alternating tables read as
+> scattered rather than as a herringbone, and one printed same-leaning table
+> (`AGXT`) does not read as "all turned the same way" either. That is real
+> evidence about the fix, just not the 25%-versus-16.2% claim above it, which
+> the missing five rows would be needed to support.
+
 ```
 AKX9  ALTERNATING  -5.5   5.0  -5.5   6.0   lifts  1 -3  2 -2   gaps 1 3 1
 A27M  ALTERNATING  -4.0   4.0  -8.0   4.0   lifts -1  2  0  3   gaps 2 3 2
@@ -1458,4 +1485,128 @@ line; no document scroll.
   (`A` plus two letters plus a derived fourth) rather than uniform. It is
   pre-existing, unchanged this round, and out of scope by the review's own
   note. The statistical assertions do not use it; they sweep the whole space.
+- **Two zigzag residuals are measured here for the first time and neither is
+  pinned by a test.** Swept over all 810,000 codes: the three gaps after the
+  four tiles run up-down-up or down-up-down on **57.44%** of tables, against
+  a 41.67% baseline for four independent values — the same baseline the
+  magnitude zigzag is judged against, and not mentioned anywhere before this
+  entry. The four lifts run up-down-up on **67.70%** — stated once, in
+  passing, where the five-versus-seven lift range is discussed, but absent
+  from this list until now. Of everything this document tracks as a
+  percentage, only six things are actually pinned by an assertion in
+  `tilt.test.ts`: the lean-flip rate (both directions), the herringbone rate,
+  lean-and-lift-together, `liftAbab` (four heights collapsing to two values,
+  a narrower question than "alternates in direction"), and the magnitude
+  zigzag. The gap zigzag and the lift zigzag are measured, now, but carry no
+  assertion — they are disclosed, not guarded.
+- **Exact angle repetition two tiles apart rose with this round's fix and
+  nothing measures it.** Tile 1 matching tile 3, or tile 2 matching tile 4,
+  on the identical signed angle: **9.83%** of those lag-2 pairs, up from
+  7.28% before the lean was drawn separately from the magnitude — **18.22%**
+  of tables carry at least one such pair — against roughly 5.1% for
+  independent draws. The same shift shows in the narrower patterns it
+  produces: signed-angle ABAB (tile 1 = tile 3, tile 2 = tile 4, the two
+  values distinct) went 0.55% to **1.44%**; magnitude-only ABAB went 1.02% to
+  **2.77%**; and **1.30%** of tables lean the same way on all four tiles
+  while alternating between exactly two magnitudes — code `AAGD` gives
+  `-6 -3 -6 -3`. All of it falls out of the magnitude zigzag, which is
+  pinned under 70%; the repetition itself carries no assertion of its own.
+  One table in seventy-seven is small next to the 36.3% herringbone this
+  round fixed, and no assertion was added for it: a seventh statistical guard
+  on the strength of a residual this size would be guarding noise rather than
+  a defect, not tightening the net. Recorded here so a future change that
+  moves this number has something to be compared against.
+- **The phone's avatar picker had no guard of any kind until this entry.**
+  The selection cue was lost silently when the palette changed — caught only
+  by the owner looking at a phone, because `apps/phone` has no DOM test of
+  any kind, and none of `client.test.ts`, `profile.test.ts` or
+  `screen.test.ts` render anything. It now has two guards short of a DOM
+  test: `avatarTileClassName` in `apps/phone/src/profile.ts` is the class
+  selection pulled out as a pure function, tested in `profile.test.ts` to
+  assert the chosen tile carries a border the fill colour does not and that
+  stripping the fill class still leaves the two states different; and
+  `docs/tv-smoke-test.md` step 15 has the phone looked at by hand. Neither is
+  a substitute for rendering the component — a regression in `App.tsx` that
+  stopped calling `avatarTileClassName` at all would pass the unit test and
+  fail only the manual step — and no DOM testing library was introduced to
+  close that gap.
+- **`.m8-address` still has no cap on `window.location.host`.** `nowrap` was
+  the right fix for the failure mode — a very long host now overflows the
+  table sideways, where there is slack, rather than growing the block
+  vertically, where there is 33.8px of it and a second line would not fit —
+  but the string itself remains uncapped. A LAN IP address or a short
+  hostname is what this ships against and neither is close to the 109px of
+  sideways slack, so nothing has been seen to overflow; a long enough
+  hostname or a future HTTPS domain could still push the table wider than the
+  frame. Not fixed this round, and not asserted by anything.
 - Everything listed as open in the round above is unchanged.
+
+## Closing the residual findings
+
+Written 2026-08-21, against the working tree at the moment of writing: branch
+`main`, everything below committed, nothing pushed. This section closes the
+seven residual findings from the review of the round above — two wrong
+figures, one disagreement between the code and this document, three
+disclosure gaps, and one visual claim the printed sample did not support.
+Every number below was measured on this machine on this date, the same way
+the rest of this document insists on.
+
+- **The sweep does not take 200ms.** That figure was vitest's own
+  test-execution timer, which excludes the survey because it runs once at
+  collection time, outside any `it()` block. Measured directly, three
+  standalone runs of the survey verbatim: **978, 985 and 1,036ms**, of which
+  the `arrangePieces` calls alone are **719-757ms**. Both
+  `apps/tv/src/tilt.test.ts` and the "residual is now pinned" section above
+  are corrected in place to the same figure.
+- **The gap floor in `apps/tv/src/tilt.ts` said "two of its four"; the true
+  floor is three, for every possible previous value**, matching what this
+  document already said. Recomputed directly rather than trusted: survivor
+  counts by previous value are 5,4,4,4,4,4,5 for the seven lifts (floor four)
+  and 3,3,3,3 for the four gaps (floor three, exactly, never more). The code
+  comment is corrected in place; see the re-verification note attached to the
+  original correction above.
+- **Two zigzag residuals — gaps up-down-up at 57.44%, lifts up-down-up at
+  67.70% — are now in the open list**, where before one was unmentioned and
+  the other appeared once in passing. Neither is pinned by an assertion; the
+  open list says so, and says which six things in this document actually are.
+- **Exact angle repetition two tiles apart, which rose from 7.28% to 9.83% of
+  lag-2 pairs (18.22% of tables carrying at least one) under this round's
+  fix, is now measured and recorded** — signed ABAB 1.44%, magnitude ABAB
+  2.77%, all-same-lean-two-magnitudes 1.30%. No assertion was added: at one
+  table in seventy-seven, and falling entirely out of the magnitude zigzag
+  that is already pinned, a seventh statistical guard would be guarding noise
+  rather than a defect. The open list records the rate for future comparison
+  instead.
+- **The twelve-table visual sample's 25%-against-16.2% claim is not
+  supported by what was printed.** The codes for five of the twelve rows were
+  never kept and cannot be reconstructed, so the comparison cannot be checked
+  from this document. Corrected in place to state only what the seven printed
+  rows support: three printed alternating tables read as scattered rather
+  than as a herringbone, and one printed same-leaning table does not read as
+  uniformly turned either.
+- **The phone's avatar picker fix had no guard.** It now has two, short of a
+  DOM test: `avatarTileClassName` in `apps/phone/src/profile.ts` is the tile
+  class selection pulled out as a pure function, covered by three assertions
+  in `profile.test.ts` that would fail if the border cue collapsed back to
+  fill colour alone; and `docs/tv-smoke-test.md` gained step 15, since the
+  phone is looked at by hand regardless. No DOM testing library was
+  introduced — `apps/phone` still has none — so a regression that stopped
+  calling `avatarTileClassName` from `App.tsx` entirely would still pass the
+  unit test. The open list says so plainly.
+- **`.m8-address` is still uncapped.** `nowrap` fixed the failure mode, not
+  the string; recorded in the open list, with the slack numbers that say why
+  nothing has overflowed yet.
+
+**Verified**, through PowerShell, because the sandboxed Bash tool still kills
+every vitest worker and reports zero tests:
+
+- `npm test` — **578 passed, 33 files** (575 before this round; three new
+  assertions on `avatarTileClassName`, no new file).
+- `npm run typecheck` — clean across all three projects.
+- `npm run guards` — ES2017 syntax check passed; Chromium 68 CSS check
+  passed; size **38,805 B** against the unchanged **42,000 B** ceiling,
+  unmoved — every change in this round touched `apps/phone` or documentation,
+  never `apps/tv`.
+
+Not verified, and still open: everything listed as open above is unchanged,
+plus the three new entries this round added to that list.
