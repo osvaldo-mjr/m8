@@ -1,0 +1,30 @@
+{
+  // The phone has its own project for the same reason the large screen does,
+  // and it is the more important half of that reason.
+  //
+  // Vite's transform reads the nearest `tsconfig.json`. Without one here it
+  // found the repository's root configuration on a development machine and
+  // nothing at all inside the container, because the image copies workspace
+  // sources but not the root program. So the phone bundle was transformed
+  // under one set of compiler options on a laptop and another in the
+  // artifact that is meant to be production-equivalent — benign with today's
+  // options, invisible to the test suite and to both large-screen guards, and
+  // exactly the divergence the image is supposed to rule out.
+  //
+  // This file settles it: the same options in both places, and it travels
+  // with the source that npm and the Dockerfile already copy.
+  //
+  // No narrowed `lib` here, unlike apps/tv. The phone runs on a phone browser
+  // somebody is holding, not on a television from 2020, so the baseline the
+  // rest of the repository uses is the right one for it.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": [],
+    "paths": {
+      "@m8/avatars": ["../../packages/avatars/src/index.ts"],
+      "@m8/protocol": ["../../packages/protocol/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}
