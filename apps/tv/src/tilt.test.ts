@@ -16,6 +16,9 @@ import type { PiecePlacement } from './tilt.js'
 /** Four code tiles, then the QR. */
 const PIECE_COUNT = 5
 
+/** Just the tiles. They are the row that shares a baseline and a rhythm. */
+const TILE_COUNT = 4
+
 /** Every four-character code this repository can issue, near enough. */
 const ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789'
 function sampleCodes(): string[] {
@@ -52,19 +55,118 @@ function everyPlacement(): PiecePlacement[] {
   return placements
 }
 
-/** Every neighbouring pair, across every sampled table. */
-function everyNeighbouringPair(): [PiecePlacement, PiecePlacement][] {
-  const pairs: [PiecePlacement, PiecePlacement][] = []
-  for (const code of sampleCodes()) {
-    const pieces = arrangement(code)
-    for (let index = 1; index < pieces.length; index += 1) {
-      const before = pieces[index - 1]
-      const after = pieces[index]
-      if (before !== undefined && after !== undefined) pairs.push([before, after])
+/**
+ * Every arrangement the alphabet can produce, reduced to counters.
+ *
+ * 810,000 codes, computed once and shared by every assertion below, because
+ * the questions that matter here are about the *distribution* and a sample of
+ * nine hundred structured codes cannot answer them. It takes about two
+ * seconds, which is the price of the one guard in this repository that can
+ * tell a scattered arrangement from a patterned one.
+ *
+ * The worst pair of each kind is kept, not just the minimum, so a failure
+ * says which arrangement broke the rule rather than only that one did.
+ */
+interface Survey {
+  readonly codes: number
+  readonly pairs: number
+  readonly smallestAngularGap: number
+  readonly smallestLiftGap: number
+  readonly smallestSpaceGap: number
+  readonly worstAngularPair: string
+  /** Neighbouring tiles leaning opposite ways, as a fraction of all pairs. */
+  readonly oppositeLean: number
+  /** Tables whose four tiles lean left-right-left-right, or the mirror. */
+  readonly allAlternating: number
+  /** Tables where the lean alternates and the height alternates with it. */
+  readonly leanAndLiftAlternating: number
+  /** Tables whose four heights are two values in an ABAB order. */
+  readonly liftAbab: number
+  /** Tables whose four magnitudes run high-low-high-low, either way up. */
+  readonly magnitudeZigzag: number
+}
+
+function survey(): Survey {
+  let codes = 0
+  let pairs = 0
+  let opposite = 0
+  let allAlternating = 0
+  let leanAndLift = 0
+  let liftAbab = 0
+  let magnitudeZigzag = 0
+  let smallestAngularGap = Number.POSITIVE_INFINITY
+  let smallestLiftGap = Number.POSITIVE_INFINITY
+  let smallestSpaceGap = Number.POSITIVE_INFINITY
+  let worstAngularPair = ''
+
+  for (const a of ALPHABET) {
+    for (const b of ALPHABET) {
+      for (const c of ALPHABET) {
+        for (const d of ALPHABET) {
+          const code = `${a}${b}${c}${d}`
+          const pieces = arrangement(code)
+          codes += 1
+
+          let alternating = true
+          for (let index = 1; index < pieces.length; index += 1) {
+            const before = pieces[index - 1]
+            const after = pieces[index]
+            if (before === undefined || after === undefined) continue
+            pairs += 1
+            const angularGap = Math.abs(after.degrees - before.degrees)
+            if (angularGap < smallestAngularGap) {
+              smallestAngularGap = angularGap
+              worstAngularPair = `${code}: ${before.degrees} then ${after.degrees}`
+            }
+            smallestLiftGap = Math.min(smallestLiftGap, Math.abs(after.liftSteps - before.liftSteps))
+            smallestSpaceGap = Math.min(smallestSpaceGap, Math.abs(after.spaceSteps - before.spaceSteps))
+            if (index >= TILE_COUNT) continue
+            if (Math.sign(after.degrees) !== Math.sign(before.degrees)) opposite += 1
+            else alternating = false
+          }
+
+          const tiles = pieces.slice(0, TILE_COUNT)
+          const lifts = tiles.map((piece) => piece.liftSteps)
+          const magnitudes = tiles.map((piece) => Math.abs(piece.degrees))
+          if (alternating) allAlternating += 1
+          if (alternating && zigzags(lifts)) leanAndLift += 1
+          if (abab(lifts)) liftAbab += 1
+          if (zigzags(magnitudes)) magnitudeZigzag += 1
+        }
+      }
     }
   }
-  return pairs
+
+  const tilePairs = codes * (TILE_COUNT - 1)
+  return {
+    codes,
+    pairs,
+    smallestAngularGap,
+    smallestLiftGap,
+    smallestSpaceGap,
+    worstAngularPair,
+    oppositeLean: opposite / tilePairs,
+    allAlternating: allAlternating / codes,
+    leanAndLiftAlternating: leanAndLift / codes,
+    liftAbab: liftAbab / codes,
+    magnitudeZigzag: magnitudeZigzag / codes,
+  }
 }
+
+/** Four values running up-down-up or down-up-down, with no two equal in a row. */
+function zigzags(values: readonly number[]): boolean {
+  const first = Math.sign((values[1] ?? 0) - (values[0] ?? 0))
+  const second = Math.sign((values[2] ?? 0) - (values[1] ?? 0))
+  const third = Math.sign((values[3] ?? 0) - (values[2] ?? 0))
+  return first !== 0 && first === -second && second === -third
+}
+
+/** Four values that are only two values, in an ABAB order. */
+function abab(values: readonly number[]): boolean {
+  return values[0] === values[2] && values[1] === values[3] && values[0] !== values[1]
+}
+
+const percent = (fraction: number): string => `${(fraction * 100).toFixed(1)}%`
 
 describe('how far each piece is turned', () => {
   it('stays inside the range a single character is comfortable at', () => {
@@ -122,41 +224,104 @@ describe('where each piece sits, and how far apart', () => {
 })
 
 /**
- * The heart of this module, and the defect it was rewritten to fix.
+ * The heart of this module, and the two defects it has now been rewritten to
+ * fix — the second of which was the first fix's own mirror image.
  *
- * The first version drew every piece independently from a range of two to
- * four degrees. That is distinct on average and indistinguishable from three
- * metres, and the owner said so after looking at a real television: the codes
- * were all turned the same way. Widening the range alone would not have
- * fixed it — an independent draw from a wide range still puts two neighbours
- * a tenth of a degree apart often enough to be what somebody sees.
+ * **The original.** Every piece was drawn independently from a range of two
+ * to four degrees. That is distinct on average and indistinguishable from
+ * three metres, and the owner said so after looking at a real television: the
+ * codes were all turned the same way. Widening the range alone would not have
+ * fixed it, because an independent draw from a wide range still puts two
+ * neighbours a tenth of a degree apart often enough to be what somebody sees.
+ * So a minimum separation between neighbours is enforced.
  *
- * So it is constructed. Each piece is chosen only from values far enough from
- * the one before it, and that is asserted here over every sampled table
- * rather than sampled and hoped for.
+ * **The repair's own defect.** Enforcing that separation on the *signed*
+ * angle made flipping the lean the cheapest way to satisfy it — every
+ * opposite-leaning angle clears three degrees for free, at most five
+ * same-leaning ones ever do. Four pairs in five flipped, and over half of all
+ * tables came out a perfect herringbone. That is a pattern too, and the eye
+ * reads a pattern as arranged rather than as scattered. The lean is now drawn
+ * on its own, as a coin.
+ *
+ * Both defects are invisible to a minimum-separation assertion, which a
+ * herringbone satisfies by construction. So the guard is statistical, and it
+ * sweeps the whole code space rather than a sample: these are questions about
+ * a distribution, and the answer has to be the same number CI sees and a
+ * report quotes.
  */
-describe('two pieces side by side', () => {
-  it('are never turned within sight of the same angle', () => {
-    for (const [before, after] of everyNeighbouringPair()) {
-      expect(Math.abs(after.degrees - before.degrees)).toBeGreaterThanOrEqual(MIN_TILT_SEPARATION_DEGREES)
-    }
+describe('every arrangement the alphabet can produce', () => {
+  const measured = survey()
+
+  it('sweeps the whole code space, not a corner of it', () => {
+    // Guards every assertion below: a survey of nothing passes them all.
+    expect(measured.codes).toBe(ALPHABET.length ** 4)
+    expect(measured.pairs).toBe(measured.codes * (PIECE_COUNT - 1))
   })
 
-  it('never sit at the same height', () => {
-    for (const [before, after] of everyNeighbouringPair()) {
-      expect(Math.abs(after.liftSteps - before.liftSteps)).toBeGreaterThanOrEqual(MIN_LIFT_SEPARATION_STEPS)
-    }
+  describe('two pieces side by side', () => {
+    it('are never turned within sight of the same angle', () => {
+      // Degrees of *actual* rotation, so this forbids +3 beside +3.5 and
+      // allows +8 beside -8. Written on magnitudes alone it would get both
+      // of those backwards.
+      expect(measured.smallestAngularGap, measured.worstAngularPair).toBeGreaterThanOrEqual(
+        MIN_TILT_SEPARATION_DEGREES,
+      )
+    })
+
+    it('never sit at the same height', () => {
+      expect(measured.smallestLiftGap).toBeGreaterThanOrEqual(MIN_LIFT_SEPARATION_STEPS)
+    })
+
+    it('are never followed by two gaps of the same width', () => {
+      expect(measured.smallestSpaceGap).toBeGreaterThanOrEqual(MIN_SPACE_SEPARATION_STEPS)
+    })
   })
 
-  it('are never followed by two gaps of the same width', () => {
-    for (const [before, after] of everyNeighbouringPair()) {
-      expect(Math.abs(after.spaceSteps - before.spaceSteps)).toBeGreaterThanOrEqual(MIN_SPACE_SEPARATION_STEPS)
-    }
-  })
+  /**
+   * The ceilings below are not round numbers pulled out of the air: each sits
+   * a little above what the mechanism measures today, and far below what the
+   * defect it replaced measured. The figures are in
+   * `docs/notes/visual-identity-report.md`; the ones that matter are that the
+   * lean used to flip on 80.5% of pairs and now flips on 53.1%, against 50%
+   * for a fair coin, and that 53.6% of tables used to alternate outright
+   * where 16.2% do now, against 12.5% for a fair coin.
+   */
+  describe('and does not settle into a pattern', () => {
+    it('does not flip the lean between neighbours too often', () => {
+      expect(measured.oppositeLean, percent(measured.oppositeLean)).toBeLessThan(0.58)
+    })
 
-  it('finds the pairs it is meant to be checking', () => {
-    // Guards the three assertions above: an empty list would pass them all.
-    expect(everyNeighbouringPair().length).toBe(sampleCodes().length * (PIECE_COUNT - 1))
+    it('does not lean the same way too often either', () => {
+      // The other mirror, and the owner's original complaint: a mechanism
+      // that favoured keeping the lean would put every code back on one
+      // diagonal. A fair coin sits at 50%; this catches a swing either way.
+      expect(measured.oppositeLean, percent(measured.oppositeLean)).toBeGreaterThan(0.45)
+    })
+
+    it('rarely comes out as a full left-right-left-right herringbone', () => {
+      expect(measured.allAlternating, percent(measured.allAlternating)).toBeLessThan(0.2)
+    })
+
+    it('rarely alternates in lean and in height at once', () => {
+      // The most legible pattern of the lot: lean left and high, lean right
+      // and low, repeat. It was 36.3% of all tables before this fix.
+      expect(measured.leanAndLiftAlternating, percent(measured.leanAndLiftAlternating)).toBeLessThan(0.15)
+    })
+
+    it('rarely draws the four heights from only two values', () => {
+      // Measured at 17.6% while the lift range held five values, which is
+      // what a zigzag looks like as a number. Seven values put it at 5.5%.
+      expect(measured.liftAbab, percent(measured.liftAbab)).toBeLessThan(0.08)
+    })
+
+    it('does not make the magnitudes bounce between the extremes', () => {
+      // The residual the alternative fix would have traded for: a rule
+      // written on magnitudes rather than on rotation forces every
+      // neighbour far along a bounded range, and the four magnitudes then
+      // run high-low-high-low on 95.5% of tables. Four independent values
+      // zigzag 41.7% of the time; this mechanism measures 58.8%.
+      expect(measured.magnitudeZigzag, percent(measured.magnitudeZigzag)).toBeLessThan(0.7)
+    })
   })
 })
 

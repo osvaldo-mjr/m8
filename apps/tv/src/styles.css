@@ -295,6 +295,20 @@ img {
  */
 .m8-address {
   margin-top: calc(var(--m8-row-gap) + var(--m8-scatter-step) * 2);
+  /*
+   * The one string on this screen nothing caps. It is
+   * `window.location.host` — short in every case anybody will meet, a LAN
+   * address and a port, but not *bounded* by anything here.
+   *
+   * `nowrap` puts that unbounded case on the axis that has room for it. The
+   * vertical arithmetic charges the code block for exactly one address line
+   * and has 33.8px of slack at 1920, so a second line would be a 40px
+   * overflow of the table on the spot. Sideways there is 109px of slack and
+   * the address is nowhere near as wide as the row of tiles above it, which
+   * is the assumption the sideways proof rests on — so it is written down
+   * here, and `scripts/tv-safe-area.test.ts` asserts this declaration.
+   */
+  white-space: nowrap;
   font-family: var(--m8-font-text);
   font-size: var(--m8-address-type);
   line-height: 1;
@@ -321,8 +335,8 @@ img {
  *
  * The row wraps, and it is allowed exactly two lines. That is not a
  * preference, it is arithmetic: the stage is a column, the table above is a
- * flex item whose content — the QR — will not shrink below 432px, and a
- * television has no scrollbar and nobody standing at it to scroll. A third
+ * flex item whose content — the QR — will not shrink below 372px at 1920,
+ * and a television has no scrollbar and nobody standing at it to scroll. A third
  * line of people is therefore not a crowded screen, it is a line pushed into
  * the overscan margin, and a fourth is people who are at the table and not
  * on it. Wrapping alone did not close that: it was measured at eight

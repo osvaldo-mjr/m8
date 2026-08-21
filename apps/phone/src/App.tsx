@@ -144,7 +144,18 @@ export function App() {
             {/* The palette, not a grid of grey tiles: an unchosen face sits
                 on the table's own terracotta, and the chosen one is filled with
                 this person's colour — the colour they are about to become on
-                the television. */}
+                the television.
+
+                The fill alone is not the cue, and used to be. Against the old
+                violet table the eight person colours ran 3.64:1 to 8.99:1;
+                against terracotta they run 1.65:1 to 4.09:1, and coral —
+                which the first person at every table is given — is 1.73:1,
+                a slightly brighter orange square among orange squares. So the
+                chosen tile also carries a border in the paper colour, which
+                is 16.7:1 against the dark gaps between the tiles whatever
+                colour the fill happens to be. Every tile carries the same
+                border width, transparent when unchosen, so choosing one does
+                not resize it and shove the grid. */}
             <div className="mt-3 grid grid-cols-3 gap-3">
               {AVATARS.map((avatar) => (
                 <button
@@ -153,8 +164,8 @@ export function App() {
                   aria-pressed={avatar.id === avatarId}
                   className={
                     avatar.id === avatarId
-                      ? 'm8-person-bg rounded-2xl py-6 text-4xl'
-                      : 'rounded-2xl bg-table py-6 text-4xl'
+                      ? 'm8-person-bg rounded-2xl border-4 border-paper py-6 text-4xl'
+                      : 'rounded-2xl border-4 border-transparent bg-table py-6 text-4xl'
                   }
                   onClick={() => setAvatarId(avatar.id)}
                 >

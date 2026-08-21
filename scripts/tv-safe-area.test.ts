@@ -444,6 +444,16 @@ describe('the screen at every number of people the table holds', () => {
       expect(declaration(rule(tokens, ':root'), '--m8-table-edge')).toMatch(/^#[0-9a-f]{6}$/)
     })
 
+    it('keeps the address on one line, which both proofs assume', () => {
+      // `window.location.host` is the one string on this screen nothing caps.
+      // The vertical model charges the code block for a single address line
+      // and has 33.8px of slack at 1920, so a wrapped address would overflow
+      // the table by a whole line; the sideways model assumes the block is no
+      // wider than its row of tiles, which a host is nowhere near. `nowrap`
+      // is what makes the unbounded string land on the axis with room.
+      expect(declaration(rule(styles, '.m8-address'), 'white-space')).toBe('nowrap')
+    })
+
     it.each(['.m8-tile', '.m8-qr'])('drops a shadow under %s', (selector) => {
       // The tilt without a shadow reads as a layout mistake; with one it
       // reads as an object put down on a surface. Both pieces carry it, and

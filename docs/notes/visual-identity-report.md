@@ -918,6 +918,15 @@ loop, no failure mode and no bias towards a fallback. Because the guarantee is
 about *neighbours*, placement became a whole-table function,
 `arrangePieces(code, pieceCount)`, rather than one call per piece.
 
+> **Correction, 2026-08-21.** "An angle keeps at least fifteen of twenty-two"
+> is wrong, and it is wrong in the direction that hid a defect. The true floor
+> is **eleven**, at `previous = ±5.5°`, where *no* same-leaning value survives
+> at all. That is the sentence which argues the mechanism has no failure mode,
+> and its number was concealing the bias described in
+> *The scatter was still patterned* below — where the angle mechanism is
+> replaced outright, and the paragraph above stops describing how an angle is
+> drawn. It still describes the lift and the gap correctly.
+
 Everything that made the old tilt good survives, and is still asserted: it is
 a pure function of the table code, so the same table always arranges itself
 the same way across every redraw, changing one character rearranges it, and
@@ -1069,10 +1078,15 @@ case:
 |---|---|---|
 | Table box | 332px | 500px |
 | Surface, once the edge band is off | 318px | 478px |
-| What the QR needs, turned 8° and lifted | 291.6px | 444.2px |
-| Slack | **26.4px** | **33.8px** |
+| What the QR needs, turned 8° and lifted | 293.6px | 444.2px |
+| Slack | **24.4px** | **33.8px** |
 | Shadow reach below a piece | 8.5px | 14px |
-| Slack per side | 13.2px | 16.9px |
+| Slack per side | 12.2px | 16.9px |
+
+The 1280 column originally read 291.6, 26.4 and 13.2px here. It was wrong —
+`tiltedExtent(244, 8)` is 275.6 and the QR's lift is 3 steps of 3px at that
+tier, so it needs 275.6 + 18 = 293.6px. The test uses the right arithmetic and
+always did; only this table was wrong. The 1920 column reproduces exactly.
 
 ## One test changed, deliberately
 
@@ -1140,10 +1154,18 @@ AEVF   -7.0°/+3  +6.0°/-1   -5.0°/+3   +8.0°/+1     gaps +0 +2 +3
 
 No two of the six looked alike, and none looked like a row of tiles turned the
 same way. An earlier draft of this round used five lift values with the same
-separation rule and produced a visible zigzag — every table alternating
-between two heights, which is the original complaint in a different costume.
-That is why the lift range is seven values rather than five. It was found by
-looking at a picture, not by a test.
+separation rule; it was visibly worse, and the lift range is seven values
+because of it. It was found by looking at a picture, not by a test.
+
+> **Correction, 2026-08-21.** This paragraph originally said the five-value
+> range "produced a visible zigzag — every table alternating between two
+> heights". "Every table" was an impression, not a measurement, in a document
+> whose stated standard is that every figure in it was measured. Swept over
+> all 810,000 codes: with five lift values **17.6%** of tables draw their four
+> heights from only two of them in an ABAB order, and 84.4% run up-down-up;
+> with seven, 5.5% and 67.7%. The direction of the change was right and the
+> residual did fall by a factor of three. The rate is now pinned by a test —
+> see *The scatter was still patterned* below.
 
 ## Not verified, and still open
 
@@ -1164,3 +1186,276 @@ looking at a picture, not by a test.
   boxes rather than glyphs, `prefers-reduced-motion` still does nothing on the
   oldest supported sets, nicknames outside Latin-1 still fall back to a system
   font, and the baton still has no visual mark. All unchanged.
+
+---
+
+# The scatter was still patterned — the review round
+
+Written 2026-08-21, on the review of the television round above. At the moment
+of writing the working tree holds only the changes described here, on top of
+that round's commit. Two things needed fixing before pushing, and three small
+corrections came with them. Every figure below was measured on this machine on
+that date: the distribution figures by sweeping all 810,000 codes the alphabet
+can issue, the contrast figures by computing WCAG relative luminance, the
+layout figures in the container in a real Chromium.
+
+## The largest reason the screen now reads as furniture went unclaimed
+
+The round above credited the shadows and the edge band. The review found the
+bigger cause, and it is worth recording because it was luck rather than
+design: **the tabletop against the room went from 1.58:1 to 3.38:1.**
+
+| | Table | Room | Ratio |
+|---|---|---|---|
+| Before | `#3b1b99` | `#180a3a` | **1.58:1** |
+| After | `#b44a32` | `#1c1614` | **3.38:1** |
+
+A slab that does not separate from its background cannot read as furniture
+whatever is put on it, and the old violet table barely separated from the old
+violet-black room. The shadows and the edge now land on a ground that supports
+them. Reproduced here rather than taken on trust.
+
+The edge band is also a correct lighting stack, which was intended but never
+checked. Relative luminance descends monotonically — table **0.148**, edge
+**0.062**, room **0.009** — which is what a lit slab in a dark room does. Had
+the edge been darker than the room it would have read as a hole rather than as
+a front face.
+
+## The angle mechanism was biased, and the bias was a pattern
+
+**What was wrong.** The fix in the round above enforced a three-degree
+separation between neighbouring angles through one filter, `apart`, which
+compares **signed** values. That is right for a position on a line and wrong
+for a direction. Every one of the eleven opposite-leaning angles clears a
+three-degree separation for free; at most five same-leaning ones ever do.
+Flipping the lean was therefore the cheapest way to satisfy the rule, and the
+draw took it four times in five.
+
+Swept over all 810,000 codes:
+
+| | Before this round | Fair coin | **After** |
+|---|---|---|---|
+| neighbouring pair leans the opposite way | **80.5%** | 50% | **53.1%** |
+| all four tiles alternate, L-R-L-R | **53.6%** | 12.5% | **16.2%** |
+| lean alternates *and* height alternates with it | **36.3%** | — | **11.0%** |
+| four heights drawn from only two values, ABAB | 5.5% | — | 5.5% |
+
+Over a third of tables came out a herringbone: lean left and high, lean right
+and low, repeat. That is the owner's original complaint wearing a mirror —
+they said the pieces all faced one way, and what they would have seen instead
+is a perfect zigzag. Both are patterns, and the eye reads a pattern as
+arranged, not as scattered.
+
+**And the docstring hid it.** `apps/tv/src/tilt.ts` said an angle "keeps at
+least fifteen of twenty-two", and this document repeated it. The true floor is
+**eleven**, at `previous = ±5.5°`, where no same-leaning value survives at
+all. That is the sentence which argues the mechanism has no failure mode, and
+its number was wrong in exactly the direction that concealed the bias. It is
+corrected in place above, and the paragraph now says it no longer describes
+how an angle is drawn.
+
+**What was done.** The lean is drawn first, on its own field of the hash,
+constrained by nothing; the magnitude then comes from those that satisfy the
+three-degree rule *given that lean*. `apps/tv/src/tilt.ts` gained `turn` and
+`reachable`; `apart` stays, unchanged, for the lift and the gap, which are
+positions on a line and for which a signed difference is exactly right.
+
+`reachable` deliberately does not fall back the way `apart` does. An empty
+side is a real answer here — take the other one — and quietly restoring the
+values the filter just discarded is how a separation guarantee stops being
+one. The side opposite the previous piece's lean can never be empty, because
+two opposite leans are at least twice the smallest magnitude apart, which is
+six degrees against a three-degree rule, so `turn` always has an answer.
+
+One forced flip is left, and it is the whole of the residual: at exactly ±5.5°
+nothing on the same side is three degrees away — 8.5 is past the top of the
+range and 2.5 is below the bottom — so whatever follows one of those two
+angles must lean the other way. That is 2 of the 22 angles, and it is why the
+measured rate is 53.1% rather than 50%.
+
+### The review prescribed a different mechanism, and it was measured too
+
+The review said to enforce the separation on the **magnitude**, `|degrees|`,
+rather than on the signed value. That was implemented and swept before being
+set aside, and the reason is in the numbers rather than in a preference.
+
+**At the prescribed three degrees it does not work at all.** The declared
+range spans five degrees, so at `previous = ±5.5°` *no* magnitude is three
+away — 8.5 is off the top, 2.5 off the bottom — and the filter comes back
+empty. `apart` then hands back the whole set, which silently voids the
+separation guarantee for 2 of 22 angles, and the existing
+minimum-separation test fails. The prescription needs the minimum lowered
+before it can run.
+
+**At the minima that do run, it trades one pattern for another.** Measured
+over the same 810,000 codes:
+
+| Mechanism | pair leans opposite | all four alternate | four magnitudes run high-low-high-low | smallest same-lean candidate set |
+|---|---|---|---|---|
+| Before this round: signed, 3° | 80.5% | 53.6% | 43.8% | 11 of 22 |
+| Magnitude, 3° | 49.9% | 12.5% | **99.2%** | **0** — guarantee voided |
+| Magnitude, 2.5° | 49.9% | 12.5% | **95.5%** | 4 of 22 |
+| Magnitude, 2° | 49.9% | 12.5% | **83.3%** | 8 of 22 |
+| **Shipped: lean as a coin, then signed 3°** | **53.1%** | **16.2%** | **58.8%** | — |
+
+Four independent values zigzag 41.7% of the time, so 58.8% is a mild residual
+and 95.5% is a rule. A separation written on magnitudes over a bounded range
+*must* bounce every neighbour to the far end of it; that is not a tuning
+problem, it is what the constraint says.
+
+It also inverts the perceptual criterion in both directions. Three degrees of
+**actual rotation** is what somebody at three metres measures: a magnitude
+rule forbids +8 beside −8, which are sixteen degrees apart and maximally
+distinct, and permits +3 beside +5, which are two degrees apart and are
+precisely the pair the owner called indistinguishable.
+
+The review's stated *goal* — "a neighbour leaning the same way at a visibly
+different magnitude stays reachable at its natural rate" — is what the shipped
+mechanism delivers: the lean is a coin, 46.9% of neighbouring pairs now lean
+the same way, and every one of them is still at least three degrees of real
+rotation apart. The diagnosis was exactly right; only the prescribed
+implementation of it was set aside, and the evidence is the table above. It is
+recorded here so it can be overruled on the numbers rather than on assertion.
+
+## The residual is now pinned, and the sweep is the guard
+
+Nothing in the repository could tell a scattered arrangement from a patterned
+one. Every assertion checked the separation minimum, which a herringbone
+satisfies by construction — which is why the defect shipped past a test file
+written specifically to cover this mechanism.
+
+`apps/tv/src/tilt.test.ts` now sweeps **all 810,000 codes** in one pass,
+computes the distribution once, and shares it across the assertions. Roughly
+200ms, and it is the same code space the figures above were measured over, so
+CI and this document cannot report different numbers.
+
+| Assertion | Ceiling / floor | Measured | Was |
+|---|---|---|---|
+| neighbouring pair leans opposite | **< 58%** | 53.1% | 80.5% |
+| neighbouring pair leans opposite | **> 45%** | 53.1% | — |
+| all four alternate | **< 20%** | 16.2% | 53.6% |
+| lean and height alternate together | **< 15%** | 11.0% | 36.3% |
+| four heights from only two values | **< 8%** | 5.5% | 17.6% at five lift values |
+| four magnitudes high-low-high-low | **< 70%** | 58.8% | 95.5% under the magnitude rule |
+
+The lower bound on the flip rate is not symmetry for its own sake: a mechanism
+that came to *favour* keeping the lean would put every code back on one
+diagonal, which is the owner's original complaint. The guard now fails on both
+mirrors of the defect.
+
+The three separation minima moved onto the same sweep, so they hold over the
+entire code space rather than over a 900-code sample, and the worst pair found
+is carried into the failure message. The smallest angular gap over all 810,000
+codes is exactly 3.0 degrees.
+
+## The phone's avatar picker lost its state cue, and this change caused it
+
+The chosen face was marked by fill alone: the person colour against the
+tabletop, same glyph, same shape, same size. `aria-pressed` kept it correct
+for assistive technology and correct for nobody looking at it.
+
+| | Person colour against an unchosen tile |
+|---|---|
+| On the old violet table `#3b1b99` | **3.64:1 to 8.99:1** — all eight clear 3:1 |
+| On terracotta `#b44a32` | **1.65:1 to 4.09:1** — blue 1.65, violet 1.68, coral 1.73 |
+
+Three of eight are now under 2:1 where all eight previously cleared the 3:1
+threshold for a non-text state indicator, and coral is worst because it is the
+same hue family as terracotta — a slightly brighter orange square among orange
+squares. Coral is also what the *first person at every table* is given.
+
+The round above called this outside a directed revision of the television.
+That was wrong: the palette change caused it. The chosen tile now also carries
+a border in the paper colour, which is **16.73:1** against the dark gaps
+between the tiles whatever the fill happens to be — a cue that does not depend
+on the palette at all. Every tile carries the same border width, transparent
+when unchosen, so choosing one does not resize it and shove the grid.
+Confirmed in the container at 390×844: all six tiles 96px tall, the chosen one
+`4px rgb(255, 246, 236)` and the rest `4px rgba(0, 0, 0, 0)`.
+
+## Three small things
+
+**The stale QR figure.** `apps/tv/src/styles.css` still said the table's
+content "will not shrink below 432px". It is 372px at 1920 now — this change
+made that sentence wrong, and stale comments have been a finding in every
+round of this work. Corrected, and the resolution it applies to is now named.
+
+**The 1280 column of the slack table.** Corrected in place above. The turned
+and lifted QR needs 293.6px at 1280, not 291.6 — `tiltedExtent(244, 8)` is
+275.6 and the QR's lift is 3 steps of 3px — so the slack is 24.4px and 12.2px
+per side. The test always used the right arithmetic; only the presented table
+was wrong. The 1920 column reproduces exactly.
+
+**`.m8-address` had no `white-space: nowrap`.** It is `window.location.host`,
+the one string on that screen nothing caps, and both proofs quietly assumed
+something about it. `nowrap` puts the unbounded case on the axis that has room
+for it: the vertical model charges the code block for exactly one address line
+and has 33.8px of slack at 1920, so a second line would overflow the table by
+40px on the spot, while sideways there is 109px of slack and a host is nowhere
+near as wide as the row of tiles. Declared, explained in the stylesheet, and
+asserted in `scripts/tv-safe-area.test.ts` — the sideways proof depends on it.
+
+**And one unmeasured claim.** The round above said the five-value lift range
+"produced a visible zigzag on every table". Measured, it is **17.6%** of
+tables drawing their four heights from two values, and 84.4% running
+up-down-up; seven values gives 5.5% and 67.7%. The direction of that fix was
+right and the residual did fall by a factor of three, but "every table" was an
+impression in a document whose standard is that every figure in it was
+measured. Corrected in place, and the rate is now pinned by the sweep.
+
+## Verified
+
+Through PowerShell, because the sandboxed Bash tool still kills every vitest
+worker and reports zero tests.
+
+- `npm test` — **575 passed, 33 files** (568 before this round).
+- `npm run typecheck` — clean across all three projects.
+- `npm run guards` — ES2017 syntax check passed; Chromium 68 CSS check passed;
+  size **38,805 B** against the unchanged **42,000 B** ceiling. The round
+  above measured 38,704 B; the 101 B is the lean field, `turn`, `reachable`
+  and the `nowrap` declaration.
+- `docker compose up --build -d` — rebuilt and running.
+
+**Twelve fresh tables were driven in headless Chromium and labelled by which
+pattern, if any, they came out with** — because the question is whether the
+fix *reads* as scattered, and a distribution cannot answer that. Three of the
+twelve alternated outright, which is 25% against an expected 16.2% and inside
+the noise of twelve draws.
+
+```
+AKX9  ALTERNATING  -5.5   5.0  -5.5   6.0   lifts  1 -3  2 -2   gaps 1 3 1
+A27M  ALTERNATING  -4.0   4.0  -8.0   4.0   lifts -1  2  0  3   gaps 2 3 2
+ADMT  ALTERNATING  -4.5   3.0  -5.5   3.0   lifts -1  1 -1  3   gaps 2 0 1
+AGXT  mixed        -6.0  -3.0  -7.5  -3.5   lifts  2  0  3  1   gaps 3 2 0
+ASQW  mixed         7.5   4.5   8.0  -7.5   lifts  0 -2  2 -3   gaps 3 1 3
+A5E5  mixed         3.5  -5.5   7.5   4.0   lifts -3  3 -2  3   gaps 2 0 1
+APEC  mixed        -3.5   3.5  -4.5  -8.0   lifts -2  1  3 -1   gaps 0 2 1
+```
+
+Looked at as pictures at 1920×1080: **the alternating ones no longer read as a
+herringbone**, because the heights no longer alternate with the lean — `AKX9`
+runs high, low, high, lower, and the gaps differ, so what the eye gets is four
+objects at four heights rather than a repeating unit. And `AGXT`, where all
+four lean the same way — an arrangement the previous mechanism could barely
+produce — does not read as "all turned the same way" either, because 3° and
+7.5° are visibly different amounts and the four heights differ. Both of the
+cases that used to be the defect now read as scatter.
+
+The seated screen was checked again at both resolutions with eight
+sixteen-character names: pieces 31px from the top of the surface, 39px from
+its lower edge, 84px and 77px from its sides at 1920, and 22/28/96/91px at
+1280; two lines of people with the last chip's bottom edge exactly on the safe
+line; no document scroll.
+
+## Not verified, and still open
+
+- **Still nothing from either of these rounds has been on a real television.**
+- **The magnitude zigzag is a real residual**, at 58.8% against a 41.7%
+  baseline. It is pinned under 70% rather than removed. Removing it would mean
+  widening the tilt range, and the top of that range is what the QR's bounding
+  box pays for — see the slack table above.
+- **The 900-code sample used by the remaining tilt tests is structured**
+  (`A` plus two letters plus a derived fourth) rather than uniform. It is
+  pre-existing, unchanged this round, and out of scope by the review's own
+  note. The statistical assertions do not use it; they sweep the whole space.
+- Everything listed as open in the round above is unchanged.

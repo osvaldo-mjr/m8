@@ -26,7 +26,11 @@
  *   - Neighbours visibly different. Distinctness on average is exactly what
  *     produced the defect above, so it is constructed rather than hoped for:
  *     each piece is chosen from only those values far enough from the piece
- *     before it. See `apart` below.
+ *     before it. See `apart` for the lift and the gap, and `turn` for the
+ *     angle — which needs its own draw, because a constraint written on a
+ *     direction is cheapest to satisfy by reversing it, and a mechanism that
+ *     reverses four times in five produces a herringbone. That was the first
+ *     version of this fix and it was the original complaint mirrored.
  *   - Stable. Derived from the table code, so the same table always arranges
  *     itself the same way and two rooms do not see the same picture. Random
  *     per render would make every piece twitch each time anybody joined or
@@ -52,7 +56,9 @@ export const TILT_MAX_DEGREES = 8
 const TILT_STEP_DEGREES = 0.5
 
 /**
- * How far apart two neighbouring pieces must be turned.
+ * How far apart two neighbouring pieces must be turned, in degrees of actual
+ * rotation — so +3 beside +3.5 is half a degree apart and forbidden, and +8
+ * beside −8 is sixteen degrees apart and allowed.
  *
  * Three degrees is the smallest difference that survives being looked at from
  * the sofa. Below it two pieces read as turned the same way, which is the
@@ -100,17 +106,23 @@ export interface PiecePlacement {
   readonly spaceSteps: number
 }
 
-/** Every angle a piece may be turned by, both directions. */
-function buildAngles(): number[] {
-  const angles: number[] = []
+/** Every magnitude a piece may be turned by, ignoring which way it leans. */
+function buildMagnitudes(): number[] {
+  const magnitudes: number[] = []
   for (
     let magnitude = TILT_MIN_DEGREES;
     magnitude <= TILT_MAX_DEGREES + TILT_STEP_DEGREES / 2;
     magnitude += TILT_STEP_DEGREES
   ) {
-    angles.push(magnitude)
-    angles.push(-magnitude)
+    magnitudes.push(magnitude)
   }
+  return magnitudes
+}
+
+/** Those magnitudes as signed angles, leaning one way or the other. */
+function leaning(magnitudes: readonly number[], right: boolean): number[] {
+  const angles: number[] = []
+  for (const magnitude of magnitudes) angles.push(right ? magnitude : -magnitude)
   return angles
 }
 
@@ -128,14 +140,17 @@ function buildSpaces(): number[] {
   return spaces
 }
 
-const ANGLES = buildAngles()
+const MAGNITUDES = buildMagnitudes()
+const RIGHT_ANGLES = leaning(MAGNITUDES, true)
+const LEFT_ANGLES = leaning(MAGNITUDES, false)
 const LIFTS = buildLifts()
 const SPACES = buildSpaces()
 
-/** Which of the three things about a piece is being drawn from the hash. */
+/** Which of the four things about a piece is being drawn from the hash. */
 const ANGLE_FIELD = 0
 const LIFT_FIELD = 1
 const SPACE_FIELD = 2
+const LEAN_FIELD = 3
 
 /**
  * FNV-1a over the code, the piece's position and which field is being asked
@@ -180,19 +195,81 @@ function hash(code: string, pieceIndex: number, field: number): number {
  * row of pieces all turned the same way: the average is not what anybody
  * sees.
  *
- * Every range here is wide enough that something always survives the filter —
- * an angle keeps at least fifteen of twenty-two, a lift at least four of
- * seven, a gap at least three of four — and `tilt.test.ts` asserts the separation
- * actually holds over nine hundred codes rather than trusting that. The empty
- * case falls back to the whole range so that a range narrowed later fails as
- * a slightly duller table rather than as a blank screen on the one thing the
- * room is looking at.
+ * A lift and a gap are positions on a line, so a signed difference is exactly
+ * what "far enough apart" means for them, and this is all they need. An angle
+ * is not, and drawing one through this function is what `turn` below exists
+ * to correct — read that first.
+ *
+ * A lift keeps at least four of its seven values and a gap at least two of
+ * its four, so neither filter can come back empty; the fallback is there so
+ * that a range narrowed later fails as a slightly duller table rather than as
+ * a blank screen on the one thing the room is looking at, and
+ * `tilt.test.ts` asserts the separations actually hold rather than trusting
+ * this sentence.
  */
 function apart(values: readonly number[], previous: number | null, minimum: number): readonly number[] {
   if (previous === null) return values
   const neighbour = previous
   const kept = values.filter((value) => Math.abs(value - neighbour) >= minimum)
   return kept.length > 0 ? kept : values
+}
+
+/**
+ * How far, and which way, one piece is turned — with the lean drawn first,
+ * on its own, as a fair coin.
+ *
+ * This is the correction to the first version of this module, and the defect
+ * it repairs is the owner's original complaint wearing a mirror.
+ *
+ * Angles used to go through `apart` like everything else. That compares
+ * signed values, which is right for a position on a line and wrong for a
+ * direction: every one of the eleven opposite-leaning angles clears a
+ * three-degree separation for free, where at most five same-leaning ones ever
+ * do, and at ±5.5° none does. Flipping was therefore the cheapest way to
+ * satisfy the rule, and the draw took it four times in five. Swept over all
+ * 810,000 codes the alphabet can issue: 80.5% of neighbouring pairs leaned
+ * opposite ways and 53.6% of tables came out a perfect left-right-left-right
+ * herringbone. A herringbone is a pattern, and the eye reads a pattern as
+ * arranged, not as scattered — which is the thing this whole module exists
+ * to avoid.
+ *
+ * The criterion was not what was wrong. Three degrees of *actual* rotation is
+ * what somebody at three metres measures: it correctly forbids +3 beside
+ * +3.5 and correctly allows +8 beside −8, and a rule written on magnitudes
+ * alone gets both of those backwards. What was wrong is drawing the lean and
+ * the magnitude together, out of a set the criterion had already skewed. So
+ * the lean comes from its own field of the hash, constrained by nothing, and
+ * the magnitude from those that satisfy the criterion given that lean.
+ *
+ * One forced flip is left and it is the whole of the residual: at exactly
+ * ±5.5° nothing on the same side is three degrees away — 8.5 is past the top
+ * of the range and 2.5 is below the bottom — so whatever follows one of those
+ * two angles must lean the other way. Everything else is a coin.
+ */
+function turn(code: string, pieceIndex: number, previous: number | null): number {
+  const right = (hash(code, pieceIndex, LEAN_FIELD) & 1) === 1
+  let candidates = reachable(right ? RIGHT_ANGLES : LEFT_ANGLES, previous)
+  // Deliberately not `apart`, which hands back the whole set when nothing
+  // survives: here an empty side is a real answer — take the other one — and
+  // silently restoring the discarded values is exactly how a separation
+  // guarantee stops being one.
+  if (candidates.length === 0) candidates = reachable(right ? LEFT_ANGLES : RIGHT_ANGLES, previous)
+  return pick(candidates, code, pieceIndex, ANGLE_FIELD)
+}
+
+/**
+ * The angles on one side that are far enough from the piece before.
+ *
+ * Never both sides at once, and never a fallback: the caller decides what an
+ * empty side means. The side opposite the previous piece's lean can never be
+ * empty — two opposite leans are at least twice the smallest magnitude apart,
+ * which is six degrees against a three-degree rule — so `turn` always has an
+ * answer.
+ */
+function reachable(angles: readonly number[], previous: number | null): readonly number[] {
+  if (previous === null) return angles
+  const neighbour = previous
+  return angles.filter((angle) => Math.abs(angle - neighbour) >= MIN_TILT_SEPARATION_DEGREES)
 }
 
 function pick(values: readonly number[], code: string, pieceIndex: number, field: number): number {
@@ -215,12 +292,7 @@ export function arrangePieces(code: string, pieceCount: number): PiecePlacement[
   let previous: PiecePlacement | null = null
   for (let index = 0; index < pieceCount; index += 1) {
     const placement: PiecePlacement = {
-      degrees: pick(
-        apart(ANGLES, previous === null ? null : previous.degrees, MIN_TILT_SEPARATION_DEGREES),
-        code,
-        index,
-        ANGLE_FIELD,
-      ),
+      degrees: turn(code, index, previous === null ? null : previous.degrees),
       liftSteps: pick(
         apart(LIFTS, previous === null ? null : previous.liftSteps, MIN_LIFT_SEPARATION_STEPS),
         code,
