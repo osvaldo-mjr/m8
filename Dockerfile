@@ -28,6 +28,10 @@ RUN npm ci
 
 FROM deps AS build
 WORKDIR /app
+# apps/tv/tsconfig.json is read by the large screen's bundler, and it extends
+# this file. Without it here the TV build fails outright rather than falling
+# back to a default, so the two travel together.
+COPY tsconfig.base.json ./tsconfig.base.json
 COPY packages ./packages
 COPY apps ./apps
 RUN npm run build
