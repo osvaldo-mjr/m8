@@ -6,6 +6,7 @@
  */
 declare const config: {
   readonly content: readonly string[]
+  readonly corePlugins: { readonly preflight: boolean }
   readonly theme: { readonly extend: { readonly colors: Record<string, unknown> } }
   readonly plugins: readonly unknown[]
 }

@@ -1,6 +1,16 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.ts'],
+  // The scanner is shown the screen, not the tests that exercise it.
+  //
+  // Tailwind decides which utilities to emit by looking for candidate class
+  // names in raw text, so it cannot tell a class from any other word — and
+  // `apps/tv/src/*.test.ts` is full of words that happen to be classes.
+  // `p-1`, `p-2` and `p-3` are participant ids in `render.test.ts`;
+  // `contents` and `lowercase` come out of prose about `textContent` and
+  // case-insensitive matching. Every one of them shipped to the television as
+  // a real rule in the real stylesheet: bytes off a budget, and selectors on
+  // the guard's surface, for classes nothing renders.
+  content: ['./index.html', './src/**/*.ts', '!./src/**/*.test.ts'],
   // Tailwind v3's own reset is off, and this screen resets what it needs
   // itself, in `src/styles.css`.
   //
