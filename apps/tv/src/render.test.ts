@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 import { AVATARS } from '@m8/avatars'
 import type { ParticipantSnapshot } from '@m8/protocol'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { renderError, renderTable, renderWaiting } from './render.js'
+import { personColor } from '@m8/tokens'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  CHIPS_ABREAST,
+  DISPLAY_FACE_STRINGS,
+  DISPLAY_FACE_SUBSET,
+  renderError,
+  renderTable,
+  renderWaiting,
+} from './render.js'
 
 /** What a screen on the owner's LAN would actually have been reached at. */
 const ADDRESS = '192.168.0.6:3000'
@@ -319,7 +327,8 @@ describe('the colour each person is given', () => {
 
   it('hands out colours in arrival order, which is what the phone reads too', () => {
     // The phone finds the same participant at the same index of the same
-    // snapshot, so the two screens cannot disagree about who is coral.
+    // snapshot. What makes that hold after somebody leaves, and not only on
+    // the way in, is covered in `when somebody leaves` below.
     renderTable(root, { code: 'KXTP', address: ADDRESS, participants: three })
     expect(chips().map(colorOf)).toEqual([
       'var(--m8-person-1)',
@@ -334,6 +343,72 @@ describe('the colour each person is given', () => {
 
     renderTable(root, { code: 'KXTP', address: ADDRESS, participants: three })
     expect(colorOf(chips()[0] as HTMLElement)).toBe(first)
+  })
+
+  /**
+   * What a departure does to the colours, which nothing covered before: the
+   * suite tested a join and stopped there, and a join is the one case where
+   * writing the colour once, when the element is created, happens to be
+   * right.
+   *
+   * The sequence below is the milestone's own definition of done — somebody
+   * leaves for good and a third person scans the code and takes their place —
+   * and it used to produce two people at one table wearing the same colour,
+   * which is the single failure this whole idea exists to prevent.
+   */
+  describe('when somebody leaves', () => {
+    const four = [
+      participant({ id: 'p-a', nickname: 'Ana' }),
+      participant({ id: 'p-b', nickname: 'Bia' }),
+      participant({ id: 'p-c', nickname: 'Caio' }),
+      participant({ id: 'p-d', nickname: 'Duda' }),
+    ]
+    const withoutBia = [four[0], four[2], four[3]] as ParticipantSnapshot[]
+    const eve = participant({ id: 'p-e', nickname: 'Eva' })
+
+    function colors(): string[] {
+      return chips().map(colorOf)
+    }
+
+    it('shifts everybody behind them one colour along', () => {
+      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: four })
+      expect(colors()).toEqual([
+        'var(--m8-person-1)',
+        'var(--m8-person-2)',
+        'var(--m8-person-3)',
+        'var(--m8-person-4)',
+      ])
+
+      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutBia })
+      // Which is exactly what the phone computes from the same snapshot, and
+      // is the trade `packages/tokens/src/person-color.ts` writes down: a
+      // colour follows an index, not a person, so no two people can share one.
+      expect(colors()).toEqual(['var(--m8-person-1)', 'var(--m8-person-2)', 'var(--m8-person-3)'])
+    })
+
+    it('does not hand the next person a colour somebody is already wearing', () => {
+      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: four })
+      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutBia })
+      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [...withoutBia, eve] })
+
+      expect(colors()).toEqual([
+        'var(--m8-person-1)',
+        'var(--m8-person-2)',
+        'var(--m8-person-3)',
+        'var(--m8-person-4)',
+      ])
+      expect(new Set(colors()).size).toBe(4)
+    })
+
+    it('agrees with what the phone computes from the same snapshot', () => {
+      // The two screens read the same index out of the same message. This is
+      // the assertion that the television is still doing that after a
+      // departure, rather than remembering what it drew before.
+      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: four })
+      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutBia })
+
+      expect(colors()).toEqual(withoutBia.map((_person, index) => personColor(index)))
+    })
   })
 })
 
@@ -378,6 +453,51 @@ describe('the row of people, redrawn', () => {
 
     expect(chips()).toHaveLength(1)
     expect(root.textContent).not.toContain('Ana')
+  })
+
+  it('leaves the survivors alone when somebody in the middle leaves', () => {
+    /*
+     * The one animation in this product means "your phone connected", and it
+     * lives on `.m8-chip` because creating an element and somebody arriving
+     * are the same event. Moving an element is not: `insertBefore` in Blink
+     * removes the node and inserts it again, which restarts its animation
+     * from the beginning.
+     *
+     * Placing each chip against whatever occupied its index made every
+     * survivor behind a departure look misplaced, so three people's phones
+     * appeared to reconnect at the moment a fourth left. Nothing here can
+     * observe a CSS animation — jsdom runs none — so what is asserted is the
+     * cause: no survivor is moved at all.
+     */
+    const caio = participant({ id: 'p-3', nickname: 'Caio' })
+    const duda = participant({ id: 'p-4', nickname: 'Duda' })
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [ana, bia, caio, duda] })
+    const before = chips()
+
+    const people = root.querySelector('.m8-people') as HTMLElement
+    const moves = vi.spyOn(people, 'insertBefore')
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [ana, caio, duda] })
+
+    expect(moves).not.toHaveBeenCalled()
+    expect(chips()).toEqual([before[0], before[2], before[3]])
+    moves.mockRestore()
+  })
+
+  it('tells the stylesheet how many people sit abreast', () => {
+    // The one number the stylesheet cannot work out for itself. Below a full
+    // line the width cap is width nobody is using, so the row carries the
+    // count and the cap relaxes to match; at a full line and beyond the
+    // number stops rising, because the cap is what keeps eight people on two
+    // lines.
+    const people = () => root.querySelector('.m8-people')?.getAttribute('data-abreast')
+
+    for (const count of [0, 1, 2, 3, 4, 5, 8]) {
+      const seated = Array.from({ length: count }, (_unused, index) =>
+        participant({ id: `p-${index}`, nickname: `P${index}` }),
+      )
+      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: seated })
+      expect(people()).toBe(String(Math.min(count, CHIPS_ABREAST)))
+    }
   })
 
   it('draws the row in the order the server sent', () => {
@@ -438,5 +558,50 @@ describe('renderError', () => {
   it('renders nothing interactive', () => {
     renderError(root, 'not-allowed')
     expect(root.querySelectorAll('button, a, input, [tabindex]')).toHaveLength(0)
+  })
+})
+
+/**
+ * The expanded black instance is subset to `[A-Z0-9 ]` plus the uppercase
+ * accented letters pt-BR needs — not merely "uppercase". There is no hyphen
+ * in it, no full stop and no apostrophe, and a character outside the subset
+ * does not look slightly wrong: it falls through to whatever font the
+ * television has, in the middle of the one line the whole room is reading.
+ *
+ * This stops being theoretical with the first game. `TIC-TAC-TOE` set as an
+ * eyebrow would drop its two hyphens into a fallback face and say nothing.
+ */
+describe('the strings set in the expanded black face', () => {
+  const strings = Object.entries(DISPLAY_FACE_STRINGS)
+
+  it('finds strings to check', () => {
+    // Guards the guard: an empty set would make the assertion below vacuous.
+    expect(strings.length).toBeGreaterThan(0)
+  })
+
+  it.each(strings)('%s is inside the subset', (_name, value) => {
+    expect(value).toMatch(DISPLAY_FACE_SUBSET)
+  })
+
+  it('rejects the hyphen the first game is about to bring', () => {
+    // Guards the guard from the other side: a pattern that accepted anything
+    // would pass every assertion above and catch nothing.
+    expect('TIC-TAC-TOE').not.toMatch(DISPLAY_FACE_SUBSET)
+    expect('Reconnecting').not.toMatch(DISPLAY_FACE_SUBSET)
+  })
+
+  it('puts every one of them on the screen where it belongs', () => {
+    // The set is only worth checking while it really is the whole set, so
+    // each string is traced to the screen that renders it.
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [participant({ connected: false })] })
+    expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.wordmark)
+    expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.joinEyebrow)
+    expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.reconnecting)
+
+    renderWaiting(root)
+    expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.waiting)
+
+    renderError(root, 'unknown-table')
+    expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.failed)
   })
 })

@@ -46,6 +46,7 @@
   --m8-disc-border: 5px;
   --m8-name-type: 30px;
   --m8-note-type: 18px;
+  --m8-chip-note-type: 13px;
   --m8-chip-gap: 44px;
   --m8-row-gap: 32px;
 }
@@ -71,6 +72,7 @@
     --m8-disc-border: 7px;
     --m8-name-type: 46px;
     --m8-note-type: 26px;
+    --m8-chip-note-type: 19px;
     --m8-chip-gap: 64px;
     --m8-row-gap: 44px;
   }
@@ -89,12 +91,31 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  /*
+   * Tailwind's preflight sets this so a bordered element needs only a width.
+   * Preflight is off here, so without it `border-width: 3px` alone draws
+   * nothing (the initial `border-style` is `none`) — a rule that works
+   * everywhere it is written today and silently draws nothing the first time
+   * somebody writes the short form.
+   */
+  border: 0 solid;
 }
 
 html,
 body {
   height: 100%;
   margin: 0;
+}
+
+/*
+ * The text face, on the document. Every element that draws text names its own
+ * family, so nothing visible depended on this — but that is what made it
+ * worth writing down: with preflight off, anything added without a
+ * `font-family` inherits the browser's default serif on a screen that has no
+ * serif anywhere in it. The phone declares the same rule for the same reason.
+ */
+body {
+  font-family: var(--m8-font-text);
 }
 
 p,
@@ -227,12 +248,27 @@ img {
 /*
  * The people sit around the table, along its near edge, in arrival order.
  *
- * The row wraps. A table holds eight, a nickname holds sixteen characters,
- * and eight of those do not fit across 1728px of safe area at a size that
- * can be read from three metres — so the choice is between wrapping and
- * running off the edge of a screen that also crops its own edges. The table
- * above shrinks to pay for the second row, which is what `flex: 1 1 auto`
- * on it is for.
+ * The row wraps, and it is allowed exactly two lines. That is not a
+ * preference, it is arithmetic: the stage is a column, the table above is a
+ * flex item whose content — the QR — will not shrink below 432px, and a
+ * television has no scrollbar and nobody standing at it to scroll. A third
+ * line of people is therefore not a crowded screen, it is a line pushed into
+ * the overscan margin, and a fourth is people who are at the table and not
+ * on it. Wrapping alone did not close that: it was measured at eight
+ * people, sweeping nickname length, and ten characters — an ordinary name —
+ * already produced three lines.
+ *
+ * Two lines is bought by capping one chip at a quarter of the row, so four
+ * always fit on a line and eight always fit on two. A percentage rather than
+ * a pixel width because the safe area is a percentage of the screen: the cap
+ * then holds at 1280, at 1920 and at whatever a laptop happens to be, with
+ * no breakpoint to keep in step.
+ *
+ * The cap only bites when the row is full of long names. Three people with
+ * long names each get their quarter and are not truncated; eight people with
+ * sixteen-character names each lose the tail of the name to an ellipsis, and
+ * keep the two things this row is actually for — their colour and their
+ * avatar, which is what is legible from three metres anyway.
  *
  * The vertical space between the table and the people, and between two rows
  * of people, is one margin on the chips rather than a margin under the
@@ -249,15 +285,49 @@ img {
   min-height: calc(var(--m8-disc-size) + var(--m8-row-gap));
 }
 
+/*
+ * Four to a line, whatever anybody typed.
+ *
+ * `flex: 0 0 auto` so a chip is as wide as its contents, `max-width: 25%` so
+ * it can never be wider than a quarter of the line, and the space between
+ * chips is `padding-right` rather than `margin-right` so that the quarter
+ * includes it — four chips of 25% plus four margins would be more than the
+ * line holds, and the fourth would wrap.
+ *
+ * `overflow: hidden` is the other half of the cap: without it, content wider
+ * than the quarter is clipped by nothing and paints over the chip beside it.
+ */
 .m8-chip {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
+  max-width: 25%;
+  overflow: hidden;
   margin-top: var(--m8-row-gap);
-  margin-right: var(--m8-chip-gap);
+  padding-right: var(--m8-chip-gap);
 }
 
-.m8-chip:last-child {
-  margin-right: 0;
+/*
+ * Below four people the quarter is width nobody is using, and a table of two
+ * would truncate two nicknames with three quarters of the row empty. The
+ * renderer writes how many sit abreast — never more than four — and the cap
+ * relaxes to match.
+ *
+ * These only ever loosen the rule above, never tighten it, and they exist
+ * only for counts that fit on one line anyway. So the two-line guarantee is
+ * unaffected by them, and a row that somehow never receives the attribute
+ * keeps the strict quarter rather than losing it.
+ */
+.m8-people[data-abreast='1'] .m8-chip {
+  max-width: 100%;
+}
+
+.m8-people[data-abreast='2'] .m8-chip {
+  max-width: 50%;
+}
+
+.m8-people[data-abreast='3'] .m8-chip {
+  max-width: 33.3333%;
 }
 
 /*
@@ -269,6 +339,15 @@ img {
   display: flex;
   align-items: center;
   justify-content: center;
+  /*
+   * Never shrinks. A flex item's default is to give up width when the line is
+   * over-constrained, and the chip is deliberately over-constrained — it is
+   * capped at a quarter of the row. Without this the disc gave up thirteen
+   * pixels of its width and none of its height, so the one circle carrying a
+   * person's colour was drawn as an ellipse at eight people and a circle at
+   * four. Measured in Chrome, not reasoned about.
+   */
+  flex: 0 0 auto;
   width: var(--m8-disc-size);
   height: var(--m8-disc-size);
   margin-right: calc(var(--m8-disc-size) / 4);
@@ -279,7 +358,25 @@ img {
   line-height: 1;
 }
 
+/*
+ * The name, and under it the word for somebody who dropped. A column, so the
+ * chip's width is the wider of the two rather than their sum: `RECONNECTING`
+ * set beside a nickname does not fit in a quarter of a 1280-wide screen, and
+ * squeezing the name to make room would hide which person had gone.
+ *
+ * `min-width: 0` is what lets it shrink at all. A flex item's floor is its
+ * content by default, so without this the name refuses to narrow, the chip
+ * exceeds its quarter, and the cap above quietly stops holding.
+ */
+.m8-chip-text {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .m8-chip-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--m8-font-text);
   font-size: var(--m8-name-type);
   line-height: 1;
@@ -297,13 +394,23 @@ img {
   background-color: transparent;
 }
 
+/*
+ * Smaller and tracked tighter than the other eyebrows, and its own token
+ * rather than `--m8-note-type`: this one has to fit inside a quarter of the
+ * row beside a disc, and the error code it used to share a size with does
+ * not. It is measured, not guessed — see the note in
+ * `scripts/tv-safe-area.test.ts`.
+ */
 .m8-chip-note {
-  margin-left: calc(var(--m8-disc-size) / 4);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: calc(var(--m8-chip-note-type) / 3);
   white-space: nowrap;
   font-family: var(--m8-font-display);
-  font-size: var(--m8-note-type);
+  font-size: var(--m8-chip-note-type);
   line-height: 1;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.1em;
   color: var(--m8-person);
 }
 
