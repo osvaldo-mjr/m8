@@ -1,37 +1,57 @@
-import type { ErrorCode, TableSnapshot } from '@m8/protocol'
+import type { DeviceSnapshot, ErrorCode, TablePhaseName } from '@m8/protocol'
 
 export type PhoneScreen =
   | { readonly kind: 'connecting' }
-  | { readonly kind: 'no-seat' }
   | { readonly kind: 'profile' }
-  | { readonly kind: 'table'; readonly table: TableSnapshot }
+  | { readonly kind: 'choosing'; readonly device: DeviceSnapshot }
+  | { readonly kind: 'preview'; readonly device: DeviceSnapshot; readonly gameId: string }
+  | { readonly kind: 'seating'; readonly device: DeviceSnapshot }
+  | { readonly kind: 'waiting'; readonly device: DeviceSnapshot }
   | { readonly kind: 'error'; readonly code: ErrorCode }
 
 /**
  * The server is authoritative and always sends full state, so the phone
  * holds no opinion of its own about which screen belongs on the display: it
- * is read fresh, every time, from the last snapshot. There is deliberately
- * no local "joined" flag here — a participant who is removed from the table,
- * or whose profile the server never accepted, simply falls out of the
- * snapshot and is read below as having no seat, rather than a stale flag
- * going on showing "you are at the table" forever.
+ * is read fresh, every time, from the last `DeviceSnapshot` — decisions, not
+ * data, and never a table. There is deliberately no memory across calls: a
+ * device that held a seat and no longer does (the host stepping out of his
+ * own chair) is read exactly as it reads today, not as a diff against
+ * whatever this function last returned.
+ *
+ * `hasProfile` and `previewedGameId` are the two pieces of state that live
+ * on the device rather than the wire — the device's own name and face, and
+ * which game it last tapped in the catalogue — because neither is data the
+ * server has any reason to track for a phone it never lets choose seats.
  */
 export function determineScreen(
-  table: TableSnapshot | null,
-  participantId: string | null,
+  device: DeviceSnapshot | null,
+  hasProfile: boolean,
+  previewedGameId: string | null,
   error: ErrorCode | null,
 ): PhoneScreen {
   if (error !== null) return { kind: 'error', code: error }
-  if (table === null) return { kind: 'connecting' }
+  if (device === null) return { kind: 'connecting' }
+  if (!hasProfile) return { kind: 'profile' }
 
-  const participant =
-    participantId === null
-      ? undefined
-      : table.participants.find((candidate) => candidate.id === participantId)
+  // Until a game is chosen, the only device connected is the host's own (see
+  // the design's §3.1) — so these two phases are always his screens, browsing
+  // and previewing, never another player's waiting room.
+  if (device.phase === 'awaiting-host' || device.phase === 'choosing-game') {
+    return previewedGameId === null
+      ? { kind: 'choosing', device }
+      : { kind: 'preview', device, gameId: previewedGameId }
+  }
 
-  if (participant === undefined) return { kind: 'no-seat' }
-  if (participant.nickname === '') return { kind: 'profile' }
-  return { kind: 'table', table }
+  // The seating screen belongs to whoever holds a seat, and to the host even
+  // without one of his own — he keeps running the table while stepped out of
+  // it. Anyone else reaches this branch only defensively; there is no seat to
+  // show and no baton to run the table with, so they wait like everyone in a
+  // phase this plan draws no screen for.
+  if (device.phase === 'seating' && (device.hasBaton || device.seatNumber !== null)) {
+    return { kind: 'seating', device }
+  }
+
+  return { kind: 'waiting', device }
 }
 
 /**
@@ -62,4 +82,36 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
 
 export function errorText(code: ErrorCode): string {
   return ERROR_TEXT[code]
+}
+
+/**
+ * Why the start control is disabled, from the number the server already
+ * counted — never recomputed from seats on this side, so the phone and the
+ * server can never disagree about how many more are needed. `null` means
+ * nothing is missing, which the caller reads as "start is enabled", not as
+ * "say nothing".
+ */
+export function startReasonText(playersNeeded: number): string | null {
+  if (playersNeeded <= 0) return null
+  return playersNeeded === 1 ? 'Waiting for one more player.' : `Waiting for ${playersNeeded} more players.`
+}
+
+/**
+ * What the waiting screen says, per phase. A `Record` over every phase this
+ * plan's wire can name, not only the ones `determineScreen` actually routes
+ * here today — the same reasoning as `ERROR_TEXT`: a phase this function has
+ * no opinion about is a type error, not a blank screen.
+ */
+const WAITING_TEXT: Record<TablePhaseName, string> = {
+  'awaiting-host': 'Watch the big screen.',
+  'choosing-game': 'Watch the big screen.',
+  seating: 'Waiting for a seat to open up.',
+  playing: 'The match is on. Watch the big screen.',
+  paused: 'The match is paused. Watch the big screen.',
+  'awaiting-seat': 'Waiting for someone to take the empty seat.',
+  finished: 'The match is over. Watch the big screen.',
+}
+
+export function waitingText(phase: TablePhaseName): string {
+  return WAITING_TEXT[phase]
 }

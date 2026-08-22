@@ -5,6 +5,7 @@ import {
   connectPhone,
   determineHelloMessage,
   determineTokenToStore,
+  profileStorageKey,
   tokenStorageKey,
 } from './client.js'
 
@@ -121,6 +122,20 @@ describe('tokenStorageKey', () => {
 
   it('names the table it belongs to', () => {
     expect(tokenStorageKey('KXTP')).toContain('KXTP')
+  })
+})
+
+describe('profileStorageKey', () => {
+  it('gives each table its own key', () => {
+    expect(profileStorageKey('KXTP')).not.toBe(profileStorageKey('MNBV'))
+  })
+
+  it('names the table it belongs to', () => {
+    expect(profileStorageKey('KXTP')).toContain('KXTP')
+  })
+
+  it('does not collide with the token key for the same table', () => {
+    expect(profileStorageKey('KXTP')).not.toBe(tokenStorageKey('KXTP'))
   })
 })
 
@@ -264,6 +279,58 @@ describe('connectPhone', () => {
 
     expect(window.location.reload).toHaveBeenCalledTimes(1)
     expect(onMessage).not.toHaveBeenCalled()
+  })
+
+  it('carries no stored profile the first time a device joins this table', () => {
+    const client = connectPhone('KXTP', vi.fn())
+
+    expect(client.storedProfile).toBeNull()
+  })
+
+  it('reads back a profile stored for this table', () => {
+    storage.setItem(profileStorageKey('KXTP'), JSON.stringify({ nickname: 'Ana', avatarId: 'fox' }))
+
+    const client = connectPhone('KXTP', vi.fn())
+
+    expect(client.storedProfile).toEqual({ nickname: 'Ana', avatarId: 'fox' })
+  })
+
+  it('does not present another table profile as its own', () => {
+    storage.setItem(profileStorageKey('MNBV'), JSON.stringify({ nickname: 'Grace', avatarId: 'owl' }))
+
+    const client = connectPhone('KXTP', vi.fn())
+
+    expect(client.storedProfile).toBeNull()
+  })
+
+  it('treats a corrupted stored profile as none at all, rather than throwing', () => {
+    storage.setItem(profileStorageKey('KXTP'), 'not json')
+
+    const client = connectPhone('KXTP', vi.fn())
+
+    expect(client.storedProfile).toBeNull()
+  })
+
+  it('remembers a submitted profile under that table key, leaving another table alone', () => {
+    storage.setItem(profileStorageKey('MNBV'), JSON.stringify({ nickname: 'Grace', avatarId: 'owl' }))
+    const client = connectPhone('KXTP', vi.fn())
+
+    client.send({ type: 'setProfile', nickname: 'Ana', avatarId: 'fox' })
+
+    expect(storage.getItem(profileStorageKey('KXTP'))).toBe(
+      JSON.stringify({ nickname: 'Ana', avatarId: 'fox' }),
+    )
+    expect(storage.getItem(profileStorageKey('MNBV'))).toBe(JSON.stringify({ nickname: 'Grace', avatarId: 'owl' }))
+  })
+
+  it('still sends setProfile on to the server, unchanged, alongside remembering it', () => {
+    const client = connectPhone('KXTP', vi.fn())
+
+    client.send({ type: 'setProfile', nickname: 'Ana', avatarId: 'fox' })
+
+    expect(socket().emitted).toEqual([
+      { event: 'm8', payload: { type: 'setProfile', nickname: 'Ana', avatarId: 'fox' } },
+    ])
   })
 
   it('closes the socket on disconnect', () => {
