@@ -1,5 +1,5 @@
-import type { DomainError, ParticipantView, TableView } from '@m8/core'
-import type { ErrorCode, ParticipantSnapshot, TableSnapshot } from '@m8/protocol'
+import type { DomainError, ParticipantView, SeatView, TableView } from '@m8/core'
+import type { ErrorCode, ParticipantSnapshot, SeatSnapshot, TableSnapshot } from '@m8/protocol'
 
 /**
  * The only place that knows both `@m8/core`'s vocabulary and the wire
@@ -20,11 +20,27 @@ export function translateParticipant(participant: ParticipantView): ParticipantS
   }
 }
 
+export function translateSeat(seat: SeatView): SeatSnapshot {
+  return {
+    number: seat.number,
+    occupant: seat.occupant === null ? null : translateParticipant(seat.occupant),
+  }
+}
+
+/**
+ * `preview` is always `null` here. A `PreviewSnapshot` carries text resolved
+ * from a game's manifest, and resolving a manifest — and clamping the
+ * requested page to how many it actually has — is the next task's job, not
+ * this translator's.
+ */
 export function translateTable(table: TableView): TableSnapshot {
   return {
     code: table.code,
     phase: table.phase,
     participants: table.participants.map(translateParticipant),
+    seats: table.seats.map(translateSeat),
+    qrVisible: table.qrVisible,
+    preview: null,
   }
 }
 

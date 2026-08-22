@@ -155,6 +155,17 @@ export class Session {
         return
       }
 
+      // The catalogue and seats these four name are on the wire as of this
+      // task, but handling them is the next task's job. Refusing rather than
+      // silently accepting keeps a client that sends one today honest about
+      // what the server actually did with it.
+      case 'previewGame':
+      case 'manualPage':
+      case 'chooseGame':
+      case 'setHostPlaying':
+        connection.send({ type: 'error', code: 'not-allowed' })
+        return
+
       default: {
         // Exhaustiveness guard: parseInbound only ever returns one of the
         // cases above today, but if ClientToServer or ScreenToServer grows a

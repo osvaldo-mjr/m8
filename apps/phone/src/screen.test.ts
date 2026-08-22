@@ -8,6 +8,9 @@ const tableWithoutNickname: TableSnapshot = {
   participants: [
     { id: 'p1', nickname: '', avatarId: 'fox', connected: true, hasBaton: true },
   ],
+  seats: [],
+  qrVisible: true,
+  preview: null,
 }
 
 const tableWithNickname: TableSnapshot = {
@@ -16,6 +19,9 @@ const tableWithNickname: TableSnapshot = {
   participants: [
     { id: 'p1', nickname: 'Ada', avatarId: 'fox', connected: true, hasBaton: true },
   ],
+  seats: [],
+  qrVisible: true,
+  preview: null,
 }
 
 const tableWithoutParticipant: TableSnapshot = {
@@ -24,6 +30,9 @@ const tableWithoutParticipant: TableSnapshot = {
   participants: [
     { id: 'p2', nickname: 'Grace', avatarId: 'owl', connected: true, hasBaton: true },
   ],
+  seats: [],
+  qrVisible: true,
+  preview: null,
 }
 
 describe('determineScreen', () => {

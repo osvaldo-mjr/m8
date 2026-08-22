@@ -152,7 +152,14 @@ describe('determineTokenToStore', () => {
     expect(
       determineTokenToStore({
         type: 'tableState',
-        table: { code: 'KXTP', phase: 'awaiting-host', participants: [] },
+        table: {
+          code: 'KXTP',
+          phase: 'awaiting-host',
+          participants: [],
+          seats: [],
+          qrVisible: true,
+          preview: null,
+        },
       }),
     ).toBeNull()
   })
@@ -173,7 +180,14 @@ describe('determineTokenToStore', () => {
 describe('connectPhone', () => {
   const state: ServerToClient = {
     type: 'tableState',
-    table: { code: 'KXTP', phase: 'awaiting-host', participants: [] },
+    table: {
+      code: 'KXTP',
+      phase: 'awaiting-host',
+      participants: [],
+      seats: [],
+      qrVisible: true,
+      preview: null,
+    },
   }
 
   it('greets the table on connect', () => {

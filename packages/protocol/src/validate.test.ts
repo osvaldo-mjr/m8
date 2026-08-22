@@ -98,4 +98,98 @@ describe('parseInbound', () => {
     expect(parseInbound([])).toBeNull()
     expect(parseInbound([{ type: 'leave' }])).toBeNull()
   })
+
+  // --- hello's round marker ---
+
+  it('accepts hello with a round marker', () => {
+    const message = { type: 'hello', protocolVersion: PROTOCOL_VERSION, code: 'KXTP', round: 3 }
+    expect(parseInbound(message)).toEqual(message)
+  })
+
+  it('accepts hello without a round marker, which is a typed arrival', () => {
+    const message = { type: 'hello', protocolVersion: PROTOCOL_VERSION, code: 'KXTP' }
+    expect(parseInbound(message)).toEqual(message)
+  })
+
+  it('rejects a round that is not a number', () => {
+    expect(
+      parseInbound({ type: 'hello', protocolVersion: PROTOCOL_VERSION, code: 'KXTP', round: '3' }),
+    ).toBeNull()
+  })
+
+  // --- previewGame ---
+
+  it('accepts a well-formed previewGame', () => {
+    const message = { type: 'previewGame', gameId: 'chess' }
+    expect(parseInbound(message)).toEqual(message)
+  })
+
+  it('rejects previewGame with a non-string gameId', () => {
+    expect(parseInbound({ type: 'previewGame', gameId: 42 })).toBeNull()
+  })
+
+  it('strips an unknown field from previewGame', () => {
+    expect(parseInbound({ type: 'previewGame', gameId: 'chess', evil: 1 })).toEqual({
+      type: 'previewGame',
+      gameId: 'chess',
+    })
+  })
+
+  // --- manualPage ---
+
+  it('accepts a well-formed manualPage', () => {
+    const message = { type: 'manualPage', page: 2 }
+    expect(parseInbound(message)).toEqual(message)
+  })
+
+  it('rejects manualPage with a non-number page', () => {
+    expect(parseInbound({ type: 'manualPage', page: '2' })).toBeNull()
+  })
+
+  it('rejects manualPage with a negative page', () => {
+    expect(parseInbound({ type: 'manualPage', page: -1 })).toBeNull()
+  })
+
+  it('strips an unknown field from manualPage', () => {
+    expect(parseInbound({ type: 'manualPage', page: 2, evil: 1 })).toEqual({
+      type: 'manualPage',
+      page: 2,
+    })
+  })
+
+  // --- chooseGame ---
+
+  it('accepts a well-formed chooseGame', () => {
+    const message = { type: 'chooseGame', gameId: 'chess' }
+    expect(parseInbound(message)).toEqual(message)
+  })
+
+  it('rejects chooseGame with a non-string gameId', () => {
+    expect(parseInbound({ type: 'chooseGame', gameId: 42 })).toBeNull()
+  })
+
+  it('strips an unknown field from every new message', () => {
+    expect(parseInbound({ type: 'chooseGame', gameId: 'chess', evil: 1 })).toEqual({
+      type: 'chooseGame',
+      gameId: 'chess',
+    })
+  })
+
+  // --- setHostPlaying ---
+
+  it('accepts a well-formed setHostPlaying', () => {
+    const message = { type: 'setHostPlaying', playing: true }
+    expect(parseInbound(message)).toEqual(message)
+  })
+
+  it('rejects setHostPlaying with a non-boolean playing', () => {
+    expect(parseInbound({ type: 'setHostPlaying', playing: 'yes' })).toBeNull()
+  })
+
+  it('strips an unknown field from setHostPlaying', () => {
+    expect(parseInbound({ type: 'setHostPlaying', playing: true, evil: 1 })).toEqual({
+      type: 'setHostPlaying',
+      playing: true,
+    })
+  })
 })

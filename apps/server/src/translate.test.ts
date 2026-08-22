@@ -45,6 +45,9 @@ describe('translateTable', () => {
         { id: 'p-1', nickname: 'Ana', avatarId: 'fox', connected: true, hasBaton: true },
         { id: 'p-2', nickname: '', avatarId: 'unset', connected: false, hasBaton: false },
       ],
+      seats: [],
+      qrVisible: false,
+      preview: null,
     })
   })
 
@@ -58,7 +61,34 @@ describe('translateTable', () => {
       preview: null,
       qrVisible: true,
     }
-    expect(translateTable(view)).toEqual({ code: 'ABCD', phase: 'awaiting-host', participants: [] })
+    expect(translateTable(view)).toEqual({
+      code: 'ABCD',
+      phase: 'awaiting-host',
+      participants: [],
+      seats: [],
+      qrVisible: true,
+      preview: null,
+    })
+  })
+
+  it('translates every seat, occupied or not', () => {
+    const view: TableView = {
+      code: 'ABCD',
+      phase: 'seating',
+      participants: [{ id: 'p-1', nickname: 'Ana', avatarId: 'fox', connected: true, hasBaton: true }],
+      seats: [
+        { number: 0, occupant: { id: 'p-1', nickname: 'Ana', avatarId: 'fox', connected: true, hasBaton: true } },
+        { number: 1, occupant: null },
+      ],
+      chosenGameId: 'chess',
+      preview: null,
+      qrVisible: false,
+    }
+
+    expect(translateTable(view).seats).toEqual([
+      { number: 0, occupant: { id: 'p-1', nickname: 'Ana', avatarId: 'fox', connected: true, hasBaton: true } },
+      { number: 1, occupant: null },
+    ])
   })
 })
 

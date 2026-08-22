@@ -93,7 +93,14 @@ describe('determineHelloMessage', () => {
 describe('connectScreen', () => {
   const state: ServerToClient = {
     type: 'tableState',
-    table: { code: 'KXTP', phase: 'awaiting-host', participants: [] },
+    table: {
+      code: 'KXTP',
+      phase: 'awaiting-host',
+      participants: [],
+      seats: [],
+      qrVisible: true,
+      preview: null,
+    },
   }
 
   it('greets on connect, asking for a fresh table when none is remembered', () => {
