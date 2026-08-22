@@ -9,13 +9,16 @@ import {
 } from '@m8/core'
 import { FakeTransport } from '@m8/transport'
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { ConnectionFault } from './faults.js'
 import { Session } from './session.js'
 
 let transport: FakeTransport
 let registry: TableRegistry
+let faults: ConnectionFault[]
 
 beforeEach(() => {
   transport = new FakeTransport()
+  faults = []
   registry = new TableRegistry({
     clock: new FixedClock(1_000),
     rng: createRng(2026),
@@ -23,7 +26,7 @@ beforeEach(() => {
     newToken: sequentialIds('t'),
     shard: 'A',
   })
-  new Session(transport, registry)
+  new Session(transport, registry, (fault) => faults.push(fault))
 })
 
 function firstOfType<T extends ServerToClient['type']>(
@@ -101,6 +104,7 @@ describe('a screen connecting', () => {
         newToken: sequentialIds('t'),
         shard: 'A',
       }),
+      (fault) => faults.push(fault),
     )
   }
 
@@ -523,5 +527,41 @@ describe('the catalogue and seats messages', () => {
     // chooseGame already cleared the preview; a stray previewGame after
     // seating has opened must not put a new one there.
     expect(registry.getTable(code)!.preview).toBeNull()
+  })
+})
+
+/**
+ * One device failing to receive is one device's problem. A broadcast reaches
+ * several connections in turn, so a send that throws part-way through would
+ * otherwise leave every device after it in the loop holding state from before
+ * the change — with no further message coming, because the server believes it
+ * already sent one. The television is usually first in that loop, which is the
+ * worst version of it: the room's shared source of truth stops moving while the
+ * table itself does not.
+ *
+ * The guard is deliberately only around the send. Building the message for a
+ * recipient stays outside it, so a domain bug in a projection still surfaces as
+ * a red test rather than being quietly swallowed for every recipient at once.
+ */
+describe('a broadcast to a connection that cannot receive', () => {
+  it('still reaches the other devices, and reports the fault', () => {
+    const screen = transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    const code = firstOfType('tv', 'tableReady').code
+
+    // The very object the session holds, broken after it was attached: the
+    // connection is live and belongs to the table, and only its delivery
+    // fails — the shape of a socket whose peer has gone without saying so.
+    screen.send = () => {
+      throw new Error('socket write failed')
+    }
+
+    transport.connect('host')
+    transport.receive('host', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+
+    expect(transport.sentTo('host').map((m) => m.type)).toContain('deviceState')
+    const fault = faults.find((candidate) => candidate.stage === 'sending')
+    expect(fault?.connectionId).toBe('tv')
+    expect(fault?.error.stack).toContain('socket write failed')
   })
 })

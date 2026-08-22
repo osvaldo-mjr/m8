@@ -3,6 +3,7 @@ import { parseInbound } from '@m8/protocol/validate'
 import type { Table, TableRegistry } from '@m8/core'
 import type { Connection, Transport } from '@m8/transport'
 import { CATALOGUE, findManifest } from './catalogue.js'
+import { toError, type FaultReporter } from './faults.js'
 import { clampPage, manifestPageCount, translateDevice, translateError, translateTable } from './translate.js'
 
 interface Attachment {
@@ -35,10 +36,12 @@ export class Session {
    * participant offline.
    */
   readonly #participantOwners = new Map<string, string>()
+  readonly #onFault: FaultReporter
 
-  constructor(transport: Transport, registry: TableRegistry) {
+  constructor(transport: Transport, registry: TableRegistry, onFault: FaultReporter) {
     this.#transport = transport
     this.#registry = registry
+    this.#onFault = onFault
 
     this.#transport.onConnect((connection) => {
       this.#connections.set(connection.id, connection)
@@ -336,13 +339,41 @@ export class Session {
       if (!connection) continue
 
       if (attachment.role === 'screen') {
-        connection.send(tableMessage)
+        this.#deliver(connection, tableMessage)
         continue
       }
 
       if (attachment.participantId === undefined) continue
       const deviceView = this.#registry.deviceView(table, attachment.participantId)
-      connection.send({ type: 'deviceState', device: translateDevice(deviceView) })
+      this.#deliver(connection, { type: 'deviceState', device: translateDevice(deviceView) })
+    }
+  }
+
+  /**
+   * One recipient's delivery, guarded so the rest of the broadcast still
+   * happens. A send that throws part-way through the loop would otherwise
+   * leave every device after it holding state from before the change, with no
+   * further message coming — the server believes it already sent one. The
+   * television is usually first in that loop, which is the worst version of
+   * it: the room's shared source of truth stops moving while the table does
+   * not.
+   *
+   * Deliberately around the send alone. The projection for each recipient is
+   * built by the caller, outside this, so a domain bug there still surfaces as
+   * a red test instead of being swallowed once per device. And deliberately
+   * not silent: this is the only trace that one device in the room stopped
+   * being told anything.
+   */
+  #deliver(connection: Connection, message: ServerToClient): void {
+    try {
+      connection.send(message)
+    } catch (thrown) {
+      this.#onFault({
+        connectionId: connection.id,
+        stage: 'sending',
+        messageType: message.type,
+        error: toError(thrown),
+      })
     }
   }
 }

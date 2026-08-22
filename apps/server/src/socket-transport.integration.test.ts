@@ -4,6 +4,7 @@ import { FixedClock, TableRegistry, createRng, sequentialIds } from '@m8/core'
 import { PROTOCOL_VERSION, type ServerToClient, type TableSnapshot } from '@m8/protocol'
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { ConnectionFault } from './faults.js'
 import { Session } from './session.js'
 import { SocketIoTransport, type TransportNegotiation } from './socket-transport.js'
 
@@ -26,6 +27,7 @@ let transport: SocketIoTransport
 let baseUrl: string
 const clients: ClientSocket[] = []
 const negotiations: TransportNegotiation[] = []
+const faults: ConnectionFault[] = []
 
 interface TrackedClient {
   readonly socket: ClientSocket
@@ -43,8 +45,12 @@ beforeEach(async () => {
     shard: 'A',
   })
   negotiations.length = 0
-  transport = new SocketIoTransport(httpServer, (n) => negotiations.push(n))
-  new Session(transport, registry)
+  faults.length = 0
+  transport = new SocketIoTransport(httpServer, {
+    onNegotiation: (negotiation) => negotiations.push(negotiation),
+    onFault: (fault) => faults.push(fault),
+  })
+  new Session(transport, registry, (fault) => faults.push(fault))
 
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve))
   const address = httpServer.address() as AddressInfo
@@ -265,6 +271,115 @@ describe('the real Socket.IO transport', () => {
     expect(second.messages.map((m) => m.type)).not.toContain('tableState')
     expect(host.messages.map((m) => m.type)).toContain('deviceState')
     expect(second.messages.map((m) => m.type)).toContain('deviceState')
+  })
+})
+
+/**
+ * A synchronous throw inside the `m8` listener is not contained by Socket.IO.
+ * It is caught by `Client#ondata`, routed to `Client#onerror`, and re-emitted
+ * as the socket's `'error'` event — which nothing in this repository listens
+ * for, so Node's `EventEmitter` rethrows it from inside that catch block, where
+ * nothing can catch it again. There is no `process.on('uncaughtException')`
+ * anywhere in `apps/server`, so the process goes down: every table on the
+ * instance, and every table's state, since in-memory state is all the state
+ * there is.
+ *
+ * Verified empirically against the installed `socket.io` rather than reasoned
+ * about — which is also why these tests install an `uncaughtException` listener
+ * of their own. Without one, the failure mode is the whole test process dying
+ * mid-run rather than an assertion failing; with one, the same defect reads as
+ * `uncaught` holding an error it should never have seen.
+ */
+describe('a message handler that throws', () => {
+  /**
+   * Replaces the `Session` the fixture installed. `onMessage` keeps one
+   * handler, so this is the whole domain layer for the rest of the test — which
+   * is the point: what the transport must survive is *whatever* the layer above
+   * it does, and the cheapest honest stand-in for a domain bug is a handler that
+   * throws on demand.
+   */
+  function installThrowingHandler(): void {
+    transport.onMessage((connection, raw) => {
+      const boom = typeof raw === 'object' && raw !== null && (raw as { boom?: unknown }).boom === true
+      if (boom) throw new Error('translation blew up')
+      connection.send({ type: 'tableReady', code: 'OKAY' })
+    })
+  }
+
+  async function withUncaughtWatch(body: (uncaught: unknown[]) => Promise<void>): Promise<void> {
+    const uncaught: unknown[] = []
+    const listener = (error: unknown): void => {
+      uncaught.push(error)
+    }
+    process.on('uncaughtException', listener)
+    try {
+      await body(uncaught)
+    } finally {
+      process.off('uncaughtException', listener)
+    }
+  }
+
+  it('does not take the process down, and answers only the offending connection', async () => {
+    installThrowingHandler()
+
+    await withUncaughtWatch(async (uncaught) => {
+      const offender = connect()
+      await waitForConnect(offender.socket)
+      const bystander = connect()
+      await waitForConnect(bystander.socket)
+
+      offender.socket.emit(CHANNEL, { type: 'previewGame', gameId: 'chess', boom: true })
+
+      const error = await waitForType(offender.messages, 'error')
+      expect(error).toEqual({ type: 'error', code: 'invalid-message' })
+
+      // The other device in the room is untouched: it neither receives the
+      // refusal meant for the offender nor loses its own server.
+      bystander.socket.emit(CHANNEL, { type: 'leave' })
+      const ready = await waitForType(bystander.messages, 'tableReady')
+      expect(ready.code).toBe('OKAY')
+      expect(bystander.messages.map((m) => m.type)).not.toContain('error')
+
+      expect(uncaught).toEqual([])
+    })
+  })
+
+  it('reports the fault with its stack, the message type and the connection id', async () => {
+    installThrowingHandler()
+
+    await withUncaughtWatch(async () => {
+      const offender = connect()
+      await waitForConnect(offender.socket)
+
+      offender.socket.emit(CHANNEL, { type: 'previewGame', gameId: 'chess', boom: true })
+      await waitForType(offender.messages, 'error')
+
+      const fault = faults.find((candidate) => candidate.stage === 'handling')
+      expect(fault?.connectionId).toBe(offender.socket.id)
+      expect(fault?.messageType).toBe('previewGame')
+      // The stack, not just the message: without it the log names a failure
+      // with no way to find where it happened, which is the whole reason the
+      // report exists rather than a counter.
+      expect(fault?.error.stack).toContain('translation blew up')
+    })
+  })
+
+  it('keeps serving the connection that threw, rather than closing it', async () => {
+    installThrowingHandler()
+
+    await withUncaughtWatch(async () => {
+      const offender = connect()
+      await waitForConnect(offender.socket)
+
+      offender.socket.emit(CHANNEL, { type: 'previewGame', gameId: 'chess', boom: true })
+      await waitForType(offender.messages, 'error')
+
+      // One malformed message is not grounds to hang up: the next message from
+      // the same phone is handled normally.
+      offender.socket.emit(CHANNEL, { type: 'leave' })
+      const ready = await waitForType(offender.messages, 'tableReady')
+      expect(ready.code).toBe('OKAY')
+    })
   })
 })
 
