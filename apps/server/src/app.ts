@@ -3,6 +3,7 @@ import fastifyStatic from '@fastify/static'
 import Fastify, { type FastifyInstance } from 'fastify'
 import QRCode from 'qrcode'
 import { TableRegistry, createRng, normalizeTableCode } from '@m8/core'
+import { CATALOGUE, GAME_ASSET_ROOTS, catalogueForPhone } from './catalogue.js'
 import { SystemClock } from './clock.js'
 import { SocketIoTransport } from './socket-transport.js'
 import { Session } from './session.js'
@@ -68,6 +69,24 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       // refetches the QR on each one.
       .header('cache-control', 'public, max-age=31536000, immutable')
       .send(svg)
+  })
+
+  for (const [id, root] of GAME_ASSET_ROOTS) {
+    // One registration per game, each rooted in that game's own package, so a
+    // game's artwork travels with the game rather than being copied into the
+    // server's tree at build time.
+    await app.register(fastifyStatic, {
+      root,
+      prefix: `/covers/${id}/`,
+      decorateReply: false,
+    })
+  }
+
+  app.get('/api/games', async (_request, reply) => {
+    // Platform content, identical for every table and cacheable — not table
+    // state. Bundling it into the phone would make adding a game a phone
+    // release.
+    return reply.header('cache-control', 'public, max-age=60').send(catalogueForPhone(CATALOGUE))
   })
 
   // Not a route: `@fastify/static`'s wildcard is registered at `/`, and
