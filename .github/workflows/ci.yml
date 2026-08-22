@@ -26,7 +26,7 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build and guard the large-screen bundle
+      - name: Build and run the guards (large-screen bundle, syntax, CSS, per-game assets)
         run: npm run guards
 
   docker:
