@@ -934,14 +934,30 @@ for the last chair and one discover the loss on pressing confirm."
 
 ```ts
 describe('the device view', () => {
-  it('tells the baton holder he may choose a game, and nobody else', () => {
+  it('tells the baton holder he may choose a game', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    const table = registry.getTable(code)!
+    expect(registry.deviceView(table, host.id).canChooseGame).toBe(true)
+  })
+
+  it('stops offering the choice once a game is chosen', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const table = registry.getTable(code)!
+    expect(registry.deviceView(table, host.id).canChooseGame).toBe(false)
+  })
+
+  it('never offers the choice to anyone without the baton', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     const other = join(registry, code)
     const table = registry.getTable(code)!
-    expect(registry.deviceView(table, host.id).canChooseGame).toBe(true)
     expect(registry.deviceView(table, other.id).canChooseGame).toBe(false)
   })
 
@@ -1007,13 +1023,17 @@ Expected: FAIL — `deviceView` is not a function, `qrVisible` is undefined.
 
 `DeviceView` carries decisions rather than data: `canStart` and `playersNeeded` rather than seat counts and minimums. `qrVisible` is computed from the phase and the free-seat count in one place, so the rule cannot drift between the screen and the server.
 
+`canChooseGame` is `hasBaton && chosenGameId === null`, not `hasBaton` alone. The design has no path for changing the game mid-seating — a host who wants a different game ends the round and everyone rescans — and Task 4's `chooseGame` guard already refuses a second choice. A device state that offers an action the server will reject is the exact failure this split exists to prevent, so the second test above, the one asserting it goes false, is the one that pins the rule.
+
 - [ ] **Step 4: Delete the domain events**
 
 Remove `packages/core/src/events.ts` and its export. Remove `#applyEvents` and its four call sites from `apps/server/src/session.ts`. Every registry method that returned `DomainEvent[]` now returns nothing or a result value.
 
 Amend architectural invariant 8 in `CLAUDE.md` to describe what actually holds:
 
-> 8. **`packages/core` performs no I/O.** No Fastify, no Socket.IO, no timers, no clock reads. It owns its own vocabulary — `TableView`, `DeviceView`, `DomainError` — and `apps/server` translates that to wire messages. It emits no events: a seam that carried nothing for two milestones was a claim, not a boundary.
+> 8. **`packages/core` performs no I/O.** No Fastify, no Socket.IO, no timers, no clock of its own — time enters only as an injected `Clock` dependency, never read from the system directly. It owns its own vocabulary — `TableView`, `DeviceView`, `DomainError` — and `apps/server` translates that to wire messages. It emits no events: a seam that carried nothing for two milestones was a claim, not a boundary.
+
+The qualifier is load-bearing. `TableRegistry` does call `this.#clock.now()`, twice — a flat "no clock reads" would be false against the file this task edits, and a working agreement that asserts a guarantee the code does not provide is the defect this repository keeps finding.
 
 - [ ] **Step 5: Run the tests and confirm they pass**
 
