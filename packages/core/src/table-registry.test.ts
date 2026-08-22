@@ -687,6 +687,23 @@ describe('choosing a game', () => {
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     expect(registry.getTable(code)!.seats[0]?.occupantId).toBe(host.id)
   })
+
+  it('refuses a second choice once a game is already chosen', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const second = join(registry, code)
+
+    // A repeat choice — plausible from a phone resending a tap it thinks
+    // never landed — must not silently re-size the seats and orphan whoever
+    // already claimed one.
+    expect(registry.chooseGame(code, host.id, 'checkers', { min: 2, max: 6 })).toEqual({
+      error: 'not-allowed',
+    })
+    expect(registry.getTable(code)!.seats).toHaveLength(2)
+    expect(registry.getTable(code)!.seats[1]?.occupantId).toBe(second.id)
+  })
 })
 
 describe('the host stepping out', () => {
@@ -718,6 +735,37 @@ describe('the host stepping out', () => {
     join(registry, code)
     join(registry, code)
     expect(registry.setHostPlaying(code, host.id, true)).toEqual({ error: 'table-full' })
+  })
+
+  it('does not claim a second seat when a retried call finds him already seated', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'checkers', { min: 2, max: 4 })
+
+    // chooseGame already seated him. A duplicate playing:true — plausible
+    // from a reconnect-heavy client that resends its last intent — must not
+    // claim a further, different seat for the same person.
+    registry.setHostPlaying(code, host.id, true)
+
+    const seats = registry.getTable(code)!.seats
+    expect(seats.filter((seat) => seat.occupantId === host.id)).toHaveLength(1)
+    expect(seats[1]?.occupantId).toBeNull()
+  })
+
+  it('lands in a later seat when someone has already taken the one he left', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    registry.setHostPlaying(code, host.id, false)
+    const other = join(registry, code)
+
+    registry.setHostPlaying(code, host.id, true)
+
+    const seats = registry.getTable(code)!.seats
+    expect(seats[0]?.occupantId).toBe(other.id)
+    expect(seats[1]?.occupantId).toBe(host.id)
   })
 })
 

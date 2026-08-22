@@ -163,6 +163,12 @@ export class TableRegistry {
     const table = this.#findMutable(code)
     if (!table) return { error: 'unknown-table' }
     if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+    // A repeat choice — plausible from a phone resending a tap it thinks
+    // never landed — must not silently re-size the seats and orphan whoever
+    // already claimed one. This milestone has no path back out of a chosen
+    // game, so a second choice is simply refused rather than replacing one
+    // in-progress seating with another.
+    if (table.chosenGameId !== null) return { error: 'not-allowed' }
 
     table.chosenGameId = gameId
     table.seats = createSeats(seats.max)
@@ -188,6 +194,10 @@ export class TableRegistry {
     if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
 
     if (playing) {
+      // A retried call — plausible from a reconnect-heavy client that
+      // resends its last intent — must not claim a further seat for someone
+      // already seated.
+      if (seatOf(table.seats, participantId)) return undefined
       const seat = firstFreeSeat(table.seats)
       if (!seat) return { error: 'table-full' }
       this.#occupySeat(table, seat.number, participantId)
