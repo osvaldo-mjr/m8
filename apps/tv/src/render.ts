@@ -610,18 +610,33 @@ function buildSeating(root: HTMLElement, view: SeatingView): SeatingDom {
   eyebrow.appendChild(host)
   stage.appendChild(eyebrow)
 
+  // The table is always here. Only what is lying on it comes and goes.
+  //
+  // This surface used to be built inside the `qrVisible` branch below, so
+  // filling the last seat took the whole wooden table away along with the
+  // invitation to join it, leaving the chips floating on the bare floor.
+  // Found on a real television, by the owner, on the first run — every test
+  // this screen had asked whether the QR was on the table, and none asked
+  // whether the table was.
+  //
+  // The television is the table. It does not leave while there is a table.
+  const table = surface('m8-table-seating')
+  stage.appendChild(table)
+
   if (view.qrVisible) {
     // The same five pieces the join screen scatters, through the same
     // function, so a table that is still being seated looks like the same
     // table that was waiting for the host — not a second design.
+    //
+    // The code goes with the QR rather than staying behind: they are one
+    // invitation in two forms, and printing a code nobody may use invites
+    // someone to type it and be refused.
     const placements = arrangePieces(view.code, PIECE_COUNT)
-    const table = surface('m8-table-seating')
     const block = element('div', 'm8-code-block')
     block.appendChild(codeTiles(view.code, placements))
     block.appendChild(element('p', 'm8-address', view.address))
     table.appendChild(block)
     table.appendChild(qrPiece(placements[QR_PIECE_INDEX], view.code))
-    stage.appendChild(table)
   }
 
   const seats = element('ul', 'm8-people')

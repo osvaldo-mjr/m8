@@ -781,6 +781,30 @@ describe('renderSeating', () => {
     expect(chips()[1]?.textContent).toBe('…')
   })
 
+  it('keeps the table under the seats once the last one fills', () => {
+    // The television is the table. Found on a real set: filling the last
+    // seat took the whole wooden surface away with the QR, leaving the
+    // chips floating on the bare floor. Every other test here asks whether
+    // the QR is on the table; this one asks whether the table is.
+    renderSeating(root, view({ qrVisible: false, seats: [seat({ number: 1, occupant: participant() })] }))
+    expect(root.querySelector('.m8-table')).not.toBeNull()
+  })
+
+  it('still has a table under the seats across the moment the last seat fills', () => {
+    renderSeating(root, view({ qrVisible: true, seats: [seat({ number: 1 })] }))
+    expect(root.querySelector('.m8-table')).not.toBeNull()
+    renderSeating(root, view({ qrVisible: false, seats: [seat({ number: 1, occupant: participant() })] }))
+    expect(root.querySelector('.m8-table')).not.toBeNull()
+  })
+
+  it('takes the code off the table with the QR, since both are ways to join', () => {
+    // The code and the QR are the same invitation in two forms, so they
+    // leave together: printing a code nobody may use invites someone to
+    // type it and be refused.
+    renderSeating(root, view({ qrVisible: false, seats: [seat({ number: 1, occupant: participant() })] }))
+    expect(root.textContent).not.toContain('KXTP')
+  })
+
   it('shows the QR while a seat is free', () => {
     renderSeating(root, view({ qrVisible: true, seats: [seat({ number: 1 })] }))
     expect(root.querySelector('.m8-qr img')).not.toBeNull()
