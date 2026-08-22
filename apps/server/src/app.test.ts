@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify'
 import QRCode from 'qrcode'
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { CATALOGUE, coverUrl } from './catalogue.js'
 import { buildApp } from './app.js'
 
 /**
@@ -104,6 +105,29 @@ describe('buildApp routing', () => {
     // camera at blinks.
     expect(res.headers['cache-control']).toContain('immutable')
     expect(res.headers['cache-control']).toMatch(/max-age=\d{5,}/)
+  })
+
+  it('serves a game cover', async () => {
+    // Derived from the catalogue rather than hard-coded, so this test
+    // follows coverUrl if the routing decision it encodes ever changes.
+    const manifest = CATALOGUE.find((game) => game.id === 'tic-tac-toe')
+    if (manifest === undefined) throw new Error('tic-tac-toe missing from the catalogue')
+
+    const res = await app.inject({ method: 'GET', url: coverUrl(manifest) })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toContain('image/svg+xml')
+  })
+
+  it('serves the phone catalogue with no manual', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/games' })
+    expect(res.statusCode).toBe(200)
+
+    const body = JSON.parse(res.body) as Array<{ id: string }>
+    expect(body.map((entry) => entry.id).sort()).toEqual([...CATALOGUE.map((game) => game.id)].sort())
+
+    // Structural, not a spot check: the phone entry has no field for manual
+    // text at all, so no manual can reach it under any key.
+    expect(res.body).not.toContain('manual')
   })
 
   it('refuses a QR request carrying no Host header rather than encoding one', async () => {
