@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { MAX_SEATS } from '@m8/contract'
 import { MAX_PARTICIPANTS } from '@m8/core'
 import { describe, expect, it } from 'vitest'
 import { stripCssComments } from './check-tv-css.mjs'
@@ -1014,6 +1015,60 @@ describe('the screen at every number of people the table holds', () => {
       // The boards run left to right, which is why the joints are horizontal
       // and the gradient's axis is vertical.
       expect(image).toContain('to bottom')
+    })
+  })
+
+  /**
+   * `renderSeating` (`apps/tv/src/render.ts`) draws up to `MAX_SEATS` chips —
+   * one per seat, filled or not — through the code block and the QR while a
+   * seat is free, above a row that wraps exactly the way the join screen's
+   * row of people already does.
+   *
+   * It earns no separate arithmetic here, because it is not a separate
+   * shape: `renderSeating` reuses the join screen's own `codeTiles`,
+   * `qrPiece` and chip-drawing functions rather than a parallel
+   * implementation, so the sweep above — one to `MAX_PARTICIPANTS`, at every
+   * tilt magnitude, at both resolutions — already proves it fits. What is
+   * checked here is the two claims that arithmetic rests on: that the two
+   * hard capacities never drift apart, and that `renderSeating` genuinely
+   * reuses those functions rather than having grown its own copy that this
+   * file can no longer see.
+   */
+  describe('the seating screen reuses this exact model', () => {
+    const render = readFileSync(`${repoRoot}apps/tv/src/render.ts`, 'utf8')
+
+    /** The body of a top-level function, by its exact name. */
+    function functionBody(name: string): string {
+      const match = new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}\\n`).exec(render)
+      if (match === null) throw new Error(`No function named ${name}`)
+      return match[0]
+    }
+
+    it('is capped at the same hard capacity core and the sweep above already prove fits', () => {
+      // `MAX_SEATS` (`@m8/contract`) and `MAX_PARTICIPANTS` (`@m8/core`) are
+      // the same number, kept in two packages that may not depend on each
+      // other — `apps/server/src/limits.test.ts` is the one place that sees
+      // both and fails if they ever disagree. This is the sweep's own stake
+      // in that agreement: the count it swept above is the count seats are
+      // actually bounded by.
+      expect(MAX_SEATS).toBe(MAX_PARTICIPANTS)
+    })
+
+    it('draws its row of seats through the exact chip the sweep above already covers', () => {
+      const built = functionBody('buildSeating')
+      expect(built).toContain("element('ul', 'm8-people')")
+      expect(built).toContain('newChip()')
+
+      const synced = functionBody('syncSeating')
+      expect(synced).toContain('updateChip(')
+      expect(synced).toContain('updateEmptySeat(')
+    })
+
+    it('draws its code and QR through the exact pieces the sweep above already covers', () => {
+      const built = functionBody('buildSeating')
+      expect(built).toContain('arrangePieces(')
+      expect(built).toContain('codeTiles(')
+      expect(built).toContain('qrPiece(')
     })
   })
 })

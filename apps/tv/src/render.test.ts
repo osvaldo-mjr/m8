@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { AVATARS } from '@m8/avatars'
-import type { ParticipantSnapshot, PreviewSnapshot, TableSnapshot } from '@m8/protocol'
-import { personColor } from '@m8/tokens'
+import type { ParticipantSnapshot, PreviewSnapshot, SeatSnapshot, TableSnapshot } from '@m8/protocol'
+import { seatColor } from '@m8/tokens'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CHIPS_ABREAST,
@@ -11,10 +11,11 @@ import {
   renderChoosing,
   renderError,
   renderScreen,
+  renderSeating,
   renderTable,
   renderWaiting,
 } from './render.js'
-import type { ChoosingView } from './render.js'
+import type { ChoosingView, SeatingView } from './render.js'
 
 /** How many steps sideways a piece throws its shadow, as the renderer wrote it. */
 function shadowAcross(piece: HTMLElement): number {
@@ -375,7 +376,15 @@ describe('the code, drawn as four objects', () => {
   })
 })
 
-describe('the colour each person is given', () => {
+describe('the colour of the row before any seat exists', () => {
+  // Nobody joins before a game is chosen (spec 3.1), so this row is the host
+  // alone, and always was — nothing here ever has a second person to shift.
+  // What used to be tested here as "arrival order" was really just this row's
+  // own position pushed through the same colour function every other row on
+  // this screen uses. Genuine seat-colour stability under a departure —
+  // several people, one of them leaving, none of the survivors' colours
+  // moving — is covered where it is actually reachable: `renderSeating`, in
+  // `the colour a seat is given` below.
   function chips(target: HTMLElement = root): HTMLElement[] {
     return Array.from(target.querySelectorAll('.m8-chip'))
   }
@@ -404,10 +413,7 @@ describe('the colour each person is given', () => {
     }
   })
 
-  it('hands out colours in arrival order, which is what the phone reads too', () => {
-    // The phone finds the same participant at the same index of the same
-    // snapshot. What makes that hold after somebody leaves, and not only on
-    // the way in, is covered in `when somebody leaves` below.
+  it('colours the row by position, one-based to match a seat number', () => {
     renderTable(root, { code: 'KXTP', address: ADDRESS, participants: three })
     expect(chips().map(colorOf)).toEqual([
       'var(--m8-person-1)',
@@ -422,72 +428,6 @@ describe('the colour each person is given', () => {
 
     renderTable(root, { code: 'KXTP', address: ADDRESS, participants: three })
     expect(colorOf(chips()[0] as HTMLElement)).toBe(first)
-  })
-
-  /**
-   * What a departure does to the colours, which nothing covered before: the
-   * suite tested a join and stopped there, and a join is the one case where
-   * writing the colour once, when the element is created, happens to be
-   * right.
-   *
-   * The sequence below is the milestone's own definition of done — somebody
-   * leaves for good and a third person scans the code and takes their place —
-   * and it used to produce two people at one table wearing the same colour,
-   * which is the single failure this whole idea exists to prevent.
-   */
-  describe('when somebody leaves', () => {
-    const four = [
-      participant({ id: 'p-a', nickname: 'Ana' }),
-      participant({ id: 'p-b', nickname: 'Bia' }),
-      participant({ id: 'p-c', nickname: 'Caio' }),
-      participant({ id: 'p-d', nickname: 'Duda' }),
-    ]
-    const withoutBia = [four[0], four[2], four[3]] as ParticipantSnapshot[]
-    const eve = participant({ id: 'p-e', nickname: 'Eva' })
-
-    function colors(): string[] {
-      return chips().map(colorOf)
-    }
-
-    it('shifts everybody behind them one colour along', () => {
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: four })
-      expect(colors()).toEqual([
-        'var(--m8-person-1)',
-        'var(--m8-person-2)',
-        'var(--m8-person-3)',
-        'var(--m8-person-4)',
-      ])
-
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutBia })
-      // Which is exactly what the phone computes from the same snapshot, and
-      // is the trade `packages/tokens/src/person-color.ts` writes down: a
-      // colour follows an index, not a person, so no two people can share one.
-      expect(colors()).toEqual(['var(--m8-person-1)', 'var(--m8-person-2)', 'var(--m8-person-3)'])
-    })
-
-    it('does not hand the next person a colour somebody is already wearing', () => {
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: four })
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutBia })
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [...withoutBia, eve] })
-
-      expect(colors()).toEqual([
-        'var(--m8-person-1)',
-        'var(--m8-person-2)',
-        'var(--m8-person-3)',
-        'var(--m8-person-4)',
-      ])
-      expect(new Set(colors()).size).toBe(4)
-    })
-
-    it('agrees with what the phone computes from the same snapshot', () => {
-      // The two screens read the same index out of the same message. This is
-      // the assertion that the television is still doing that after a
-      // departure, rather than remembering what it drew before.
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: four })
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutBia })
-
-      expect(colors()).toEqual(withoutBia.map((_person, index) => personColor(index)))
-    })
   })
 })
 
@@ -764,6 +704,219 @@ describe('the box and the manual, drawn as two objects', () => {
   })
 })
 
+describe('renderSeating', () => {
+  function seat(overrides: Partial<SeatSnapshot> = {}): SeatSnapshot {
+    return { number: 1, occupant: null, ...overrides }
+  }
+
+  function view(overrides: Partial<SeatingView> = {}): SeatingView {
+    return {
+      code: 'KXTP',
+      address: ADDRESS,
+      seats: [],
+      qrVisible: true,
+      batonHolder: null,
+      ...overrides,
+    }
+  }
+
+  function chips(target: HTMLElement = root): HTMLElement[] {
+    return Array.from(target.querySelectorAll('.m8-chip'))
+  }
+
+  it("shows an occupant's avatar and nickname in that seat's own colour", () => {
+    renderSeating(
+      root,
+      view({ seats: [seat({ number: 2, occupant: participant({ nickname: 'Bia', avatarId: 'fox' }) })] }),
+    )
+    const chip = chips()[0] as HTMLElement
+    expect(chip.textContent).toContain('Bia')
+    expect(chip.style.getPropertyValue('--m8-person')).toBe(seatColor(2))
+  })
+
+  it('renders an empty seat as a place at the table, not as a gap', () => {
+    renderSeating(
+      root,
+      view({
+        seats: [seat({ number: 1, occupant: null }), seat({ number: 2, occupant: participant() })],
+      }),
+    )
+    expect(chips()).toHaveLength(2)
+    expect(chips()[0]?.className).toContain('m8-chip-away')
+    expect(chips()[0]?.style.getPropertyValue('--m8-person')).toBe(seatColor(1))
+  })
+
+  it('tells an empty seat apart from one claimed but not yet named', () => {
+    // Both draw a mostly-blank chip; only the empty one carries the seat's
+    // own number, since the other genuinely has somebody in it.
+    renderSeating(
+      root,
+      view({
+        seats: [
+          seat({ number: 1, occupant: null }),
+          seat({ number: 2, occupant: participant({ id: 'p-2', nickname: '', avatarId: 'unset' }) }),
+        ],
+      }),
+    )
+    expect(chips()[0]?.textContent).toBe('1')
+    expect(chips()[1]?.textContent).toBe('…')
+  })
+
+  it('shows the QR while a seat is free', () => {
+    renderSeating(root, view({ qrVisible: true, seats: [seat({ number: 1 })] }))
+    expect(root.querySelector('.m8-qr img')).not.toBeNull()
+  })
+
+  it('hides the QR the instant the last seat fills', () => {
+    renderSeating(root, view({ qrVisible: false, seats: [seat({ number: 1, occupant: participant() })] }))
+    expect(root.querySelector('.m8-qr')).toBeNull()
+  })
+
+  it('takes the QR off the table the moment qrVisible flips, not only when it starts false', () => {
+    // The stronger form of the test above: the same table, one seat still
+    // free, then the same table with that seat just taken — the actual
+    // transition the domain calls "the instant the last seat fills", rather
+    // than two screens that never shared a root.
+    renderSeating(root, view({ qrVisible: true, seats: [seat({ number: 1 })] }))
+    expect(root.querySelector('.m8-qr')).not.toBeNull()
+
+    renderSeating(root, view({ qrVisible: false, seats: [seat({ number: 1, occupant: participant() })] }))
+    expect(root.querySelector('.m8-qr')).toBeNull()
+  })
+
+  it('brings the QR back if a seat empties again', () => {
+    renderSeating(root, view({ qrVisible: false, seats: [seat({ number: 1, occupant: participant() })] }))
+    renderSeating(root, view({ qrVisible: true, seats: [seat({ number: 1, occupant: null })] }))
+    expect(root.querySelector('.m8-qr img')).not.toBeNull()
+  })
+
+  it('marks the baton holder even when he holds no seat', () => {
+    const host = participant({ id: 'p-host', nickname: 'Duda', hasBaton: true })
+    renderSeating(
+      root,
+      view({
+        seats: [seat({ number: 1, occupant: participant({ id: 'p-1', nickname: 'Ana' }) })],
+        batonHolder: host,
+      }),
+    )
+    expect(root.textContent).toContain('Duda')
+    // Not seated: the only chip in the row belongs to whoever actually is.
+    expect(chips()).toHaveLength(1)
+  })
+
+  it('names nobody when there happens to be no baton holder to mark', () => {
+    // Unreachable in the real product — a table always has one — but a
+    // screen that threw on a missing field would be a worse failure than a
+    // blank badge, so this pins that it does not.
+    renderSeating(root, view({ seats: [seat({ number: 1 })], batonHolder: null }))
+    expect(() => renderSeating(root, view({ seats: [seat({ number: 1 })], batonHolder: null }))).not.toThrow()
+  })
+
+  it('tells the stylesheet how many seats sit abreast', () => {
+    renderSeating(root, view({ seats: [seat({ number: 1 }), seat({ number: 2 })] }))
+    expect(root.querySelector('.m8-people')?.getAttribute('data-abreast')).toBe('2')
+  })
+
+  it('renders nothing interactive', () => {
+    renderSeating(
+      root,
+      view({
+        seats: [seat({ number: 1, occupant: participant() })],
+        batonHolder: participant({ hasBaton: true }),
+      }),
+    )
+    expect(root.querySelectorAll('button, a, input, [tabindex]')).toHaveLength(0)
+  })
+
+  it('renders a nickname as text, never as markup', () => {
+    const hostile = '<img src=x onerror=alert(1)>'
+    renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant({ nickname: hostile }) })] }))
+    expect(root.textContent).toContain(hostile)
+    expect(root.querySelector('img[src="x"]')).toBeNull()
+  })
+
+  it('keeps the same QR element across renders while a seat stays free', () => {
+    renderSeating(root, view({ seats: [seat({ number: 1 })] }))
+    const first = root.querySelector('img')
+
+    renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant() })] }))
+    expect(root.querySelector('img')).toBe(first)
+  })
+
+  it('builds a new QR element when the table code changes', () => {
+    renderSeating(root, view({ code: 'KXTP', seats: [seat({ number: 1 })] }))
+    const first = root.querySelector('img')
+
+    renderSeating(root, view({ code: 'MNBV', seats: [seat({ number: 1 })] }))
+    expect(root.querySelector('img')).not.toBe(first)
+  })
+
+  it('replaces previous content instead of appending', () => {
+    renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant({ nickname: 'Ana' }) })] }))
+    renderSeating(root, view({ seats: [] }))
+    expect(root.textContent).not.toContain('Ana')
+  })
+
+  it("draws every seat at the table's hard capacity without crashing", () => {
+    // MAX_SEATS in `@m8/contract`, and `MAX_PARTICIPANTS` in `@m8/core`, are
+    // both 8 — asserted equal in `apps/server/src/limits.test.ts`, the one
+    // place that sees both packages. `apps/tv/src` is typechecked under its
+    // own narrow project (`apps/tv/tsconfig.json`) and imports neither, so
+    // the number is written out here rather than imported; the arithmetic
+    // that proves this many seats actually fit on screen, at every tilt and
+    // both resolutions, lives in `scripts/tv-safe-area.test.ts`.
+    const eight = Array.from({ length: 8 }, (_unused, index) =>
+      seat({
+        number: index + 1,
+        occupant: index % 2 === 0 ? participant({ id: `p-${index}`, nickname: `P${index}` }) : null,
+      }),
+    )
+    renderSeating(root, view({ seats: eight, qrVisible: false }))
+
+    expect(chips()).toHaveLength(8)
+    const colors = new Set(chips().map((chip) => chip.style.getPropertyValue('--m8-person')))
+    expect(colors.size).toBe(8)
+  })
+
+  describe('the colour a seat is given', () => {
+    it('is unaffected by another seat emptying', () => {
+      const ana = participant({ id: 'p-1', nickname: 'Ana' })
+      const caio = participant({ id: 'p-3', nickname: 'Caio' })
+      renderSeating(
+        root,
+        view({
+          seats: [
+            seat({ number: 1, occupant: ana }),
+            seat({ number: 2, occupant: participant({ id: 'p-2', nickname: 'Bia' }) }),
+            seat({ number: 3, occupant: caio }),
+          ],
+        }),
+      )
+      const thirdBefore = chips()[2]?.style.getPropertyValue('--m8-person')
+
+      // Seat 2's occupant leaves for good; the row's other two seats do not move.
+      renderSeating(
+        root,
+        view({
+          seats: [seat({ number: 1, occupant: ana }), seat({ number: 2, occupant: null }), seat({ number: 3, occupant: caio })],
+        }),
+      )
+
+      expect(chips()[2]?.style.getPropertyValue('--m8-person')).toBe(thirdBefore)
+      expect(chips()[2]?.style.getPropertyValue('--m8-person')).toBe(seatColor(3))
+    })
+
+    it('is inherited by whoever takes the seat next, not carried away by who left', () => {
+      renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant({ id: 'p-1', nickname: 'Ana' }) })] }))
+      renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant({ id: 'p-2', nickname: 'Bia' }) })] }))
+
+      const chip = chips()[0] as HTMLElement
+      expect(chip.textContent).toContain('Bia')
+      expect(chip.style.getPropertyValue('--m8-person')).toBe(seatColor(1))
+    })
+  })
+})
+
 describe('renderScreen', () => {
   const ADDRESS = '192.168.0.6:3000'
 
@@ -812,17 +965,28 @@ describe('renderScreen', () => {
     expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.waiting)
   })
 
-  it('falls back to the waiting screen for seating, which the next plan draws', () => {
-    renderScreen(root, table({ phase: 'seating' }), ADDRESS)
-    expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.waiting)
+  it('draws the seats, and the baton holder, once seating begins', () => {
+    renderScreen(
+      root,
+      table({
+        phase: 'seating',
+        seats: [
+          { number: 1, occupant: participant({ nickname: 'Ana', hasBaton: true }) },
+          { number: 2, occupant: null },
+        ],
+        participants: [participant({ nickname: 'Ana', hasBaton: true })],
+      }),
+      ADDRESS,
+    )
+    expect(root.querySelectorAll('.m8-chip')).toHaveLength(2)
+    expect(root.textContent).toContain('Ana')
   })
 
   // Nothing in this plan can start a match, so these four phases can arrive
-  // on the wire but never really happen. Named individually, rather than
-  // covered by the `seating` case above, because a `switch` silently
-  // rendering nothing for one of them would leave a blank television with
-  // no way to tell why — the one failure this target cannot be debugged
-  // through.
+  // on the wire but never really happen. Named individually, because a
+  // `switch` silently rendering nothing for one of them would leave a blank
+  // television with no way to tell why — the one failure this target cannot
+  // be debugged through.
   it.each(['playing', 'paused', 'awaiting-seat', 'finished'] as const)(
     'falls back to the waiting screen for the unreachable phase %s',
     (phase) => {

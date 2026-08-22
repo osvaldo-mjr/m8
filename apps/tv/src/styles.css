@@ -320,6 +320,21 @@ img {
 }
 
 /*
+ * The baton holder's badge, on `renderSeating`. Sized to sit inside the
+ * eyebrow row's own height — never taller than `.m8-wordmark`, which is what
+ * the row's height actually is — so marking him costs no space beyond what
+ * the row already has. Set in `--m8-font-text` rather than the expanded
+ * black face `.m8-eyebrow` uses: a nickname nobody chose from a controlled
+ * alphabet sits on this line, and that face cannot render one safely.
+ */
+.m8-host {
+  font-family: var(--m8-font-text);
+  font-size: var(--m8-eyebrow-type);
+  line-height: 1;
+  color: var(--m8-paper);
+}
+
+/*
  * The table: a rigid, perfectly square wooden surface, lit from above and
  * clearly lighter than the room behind it. It is the one thing here that is
  * never turned — the contrast between a rigid surface and things casually put
@@ -512,7 +527,8 @@ img {
  * it, both placed through the same scatter the code tiles and the QR use —
  * see `apps/tv/src/tilt.ts` and `renderChoosing`. `.m8-table` already centres
  * a row of pieces, so the `m8-table-choosing` variant it is drawn with, like
- * `m8-table-join`, carries no rule of its own.
+ * `m8-table-join` and `m8-table-seating`, carries no rule of its own — each
+ * exists only so the tree reads clearly in devtools.
  */
 
 /*

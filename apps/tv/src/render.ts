@@ -1,6 +1,6 @@
 import { avatarGlyph } from '@m8/avatars'
-import type { ErrorCode, Locale, ParticipantSnapshot, TableSnapshot } from '@m8/protocol'
-import { PERSON_COLOR_PROPERTY, personColor } from '@m8/tokens'
+import type { ErrorCode, Locale, ParticipantSnapshot, SeatSnapshot, TableSnapshot } from '@m8/protocol'
+import { PERSON_COLOR_PROPERTY, seatColor } from '@m8/tokens'
 import {
   QR_SCATTER_STEP_PROPERTY,
   SCATTER_STEP_PROPERTY,
@@ -41,6 +41,29 @@ export interface ChoosingView {
 }
 
 /**
+ * What `renderSeating` draws: every seat, filled or not, the QR while one is
+ * free, and whoever holds the baton.
+ *
+ * `qrVisible` is read from the snapshot rather than re-derived from `seats`:
+ * the domain already computes exactly when a table may still be joined —
+ * "while any seat is free" reads as the obvious rule until a seat vacates
+ * mid-match and the QR must *not* return outside seating, which this screen
+ * has no way to know on its own. Trusting the field is what keeps that rule
+ * in one place.
+ *
+ * `batonHolder` is a participant, not a seat, because the whole point of
+ * §3.3 is that the two may not coincide: the host can run the table from no
+ * chair at all, and is still owed a mark on screen.
+ */
+export interface SeatingView {
+  readonly code: string
+  readonly address: string
+  readonly seats: readonly SeatSnapshot[]
+  readonly qrVisible: boolean
+  readonly batonHolder: ParticipantSnapshot | null
+}
+
+/**
  * Every string this screen sets in the expanded black face, in one place.
  *
  * That face is not merely "uppercase": it is subset to `[A-Z0-9 ]`, plus the
@@ -70,6 +93,16 @@ export const DISPLAY_FACE_SUBSET = /^[A-Z0-9 ]+$/
 
 /** A participant who has not chosen a name yet, so the row is still a row. */
 const NO_NICKNAME = '…'
+
+/**
+ * The word that marks the baton holder, on `renderSeating`.
+ *
+ * Set in `--m8-font-text`, not the expanded black face `DISPLAY_FACE_STRINGS`
+ * is subset for — the word sits beside a nickname nobody chose from a
+ * controlled alphabet, so the line it lives on has to render arbitrary
+ * Unicode regardless of what this word alone would tolerate.
+ */
+const HOST_LABEL = 'HOST'
 
 /**
  * How many people sit abreast at most, which is also the cap on how wide one
@@ -127,6 +160,33 @@ interface TableDom {
 }
 
 const tables = new WeakMap<HTMLElement, TableDom>()
+
+/**
+ * What is currently on the seating screen, per root — the same reuse
+ * `TableDom` exists for and for the same two reasons: the QR should not
+ * blink on every occupant change, and a chip should not replay its arrival
+ * animation on every unrelated update.
+ *
+ * `seatChips` is built once, in seat order, and never reordered or removed:
+ * unlike the join screen's row, a seat's position in this row is not up for
+ * negotiation — it is the seat number, fixed for as long as the seats exist
+ * — so there is no join-screen-style diffing to do here, only updating each
+ * slot in place.
+ *
+ * `qrVisible` is carried so a toggle of it can be told apart from every
+ * other reason this screen redraws: the code and the QR are only rebuilt
+ * when it actually flips, not on every seat update while it holds steady.
+ */
+interface SeatingDom {
+  readonly code: string
+  readonly qrVisible: boolean
+  readonly stage: HTMLElement
+  readonly host: HTMLElement
+  readonly seats: HTMLElement
+  readonly seatChips: readonly HTMLElement[]
+}
+
+const seatingScreens = new WeakMap<HTMLElement, SeatingDom>()
 
 function element(tag: string, className: string, text?: string): HTMLElement {
   const node = document.createElement(tag)
@@ -321,9 +381,10 @@ function buildTable(root: HTMLElement, view: TvView): TableDom {
  * inside its quarter whatever anybody typed, and the disc is still the
  * tallest thing in it, so the row does not change height when somebody drops.
  *
- * No colour is written here. A chip element outlives the index its person
- * sits at — that is the whole point of reusing elements — so the colour is
- * written on every update instead, in `updateChip`.
+ * No colour is written here. A chip element outlives whoever it is currently
+ * drawing — a row position on the join screen, a seat here — which is the
+ * whole point of reusing elements, so the colour is written on every update
+ * instead, in `updateChip` or `updateEmptySeat`.
  */
 function newChip(): HTMLElement {
   const chip = element('li', 'm8-chip')
@@ -337,24 +398,21 @@ function newChip(): HTMLElement {
 /**
  * Brings one chip up to date, including its colour.
  *
- * `arrivalIndex` is where this person sits in the snapshot the server sent,
- * which is what `personColor` means by arrival order and what the phone reads
- * out of the same message. It is deliberately *not* stable across a
- * departure: when the second of four people leaves, the two behind them shift
- * one colour along — on both screens, off the same message.
- *
- * That shift is why the colour is written here rather than where the element
- * is created. It used to be written once, at creation, so the television kept
- * every survivor's original colour while the phones recomputed: the two
- * screens disagreed from the moment anybody left, and the next person to join
- * was handed a colour somebody at the table was already wearing. Two
- * identical colours in one room is the one failure this whole idea exists to
- * prevent.
+ * `colour` is a finished CSS value — `var(--m8-person-N)` — handed in by the
+ * caller rather than computed here, because the two callers derive it from
+ * different things: the join screen, where the host is alone before any seat
+ * exists, from his position in the row; `renderSeating`, from the seat he is
+ * actually sitting in. Neither shifts a survivor's colour when somebody else
+ * leaves, which is what `personColor`'s old arrival-index scheme did — the
+ * television kept every survivor's original colour while the phones
+ * recomputed a shifted one, and the two screens disagreed from the moment
+ * anybody left. Two identical colours in one room is the one failure this
+ * whole idea exists to prevent.
  */
-function updateChip(chip: HTMLElement, person: ParticipantSnapshot, arrivalIndex: number): void {
+function updateChip(chip: HTMLElement, person: ParticipantSnapshot, colour: string): void {
   // The one colour this person has, on both screens. The stylesheet reads
   // `var(--m8-person)` and stays ignorant of which person it is drawing.
-  chip.style.setProperty(PERSON_COLOR_PROPERTY, personColor(arrivalIndex))
+  chip.style.setProperty(PERSON_COLOR_PROPERTY, colour)
 
   // These are for tests and for whoever inspects the DOM. Nobody in the room
   // can see an attribute, so the difference a person has to notice is carried
@@ -388,6 +446,38 @@ function updateChip(chip: HTMLElement, person: ParticipantSnapshot, arrivalIndex
   if (note === undefined) {
     text.appendChild(element('span', 'm8-chip-note', DISPLAY_FACE_STRINGS.reconnecting))
   }
+}
+
+/**
+ * Draws a seat nobody has claimed — a place set at the table rather than a
+ * gap in the row, so the room can see there is a chair free without counting
+ * what is missing.
+ *
+ * `.m8-chip-away` is reused rather than invented: it is already the outline
+ * of a colour with nothing filled in, which is exactly what an empty chair
+ * is. The seat's own number stands where a glyph would, since there is no
+ * avatar yet to draw — and no nickname, which is `NO_NICKNAME`'s job for a
+ * seat somebody has claimed but not yet named. This is a stronger claim than
+ * that: nobody has sat down at all.
+ */
+function updateEmptySeat(chip: HTMLElement, seat: SeatSnapshot): void {
+  chip.style.setProperty(PERSON_COLOR_PROPERTY, seatColor(seat.number))
+  chip.className = 'm8-chip m8-chip-away'
+  // The same chip element is reused across seat 3's whole life — occupied,
+  // vacated, occupied again by somebody else — so a stale attribute from a
+  // previous occupant must not survive into an empty render.
+  chip.removeAttribute('data-baton')
+  chip.removeAttribute('data-connected')
+
+  const disc = chip.children[0]
+  const text = chip.children[1]
+  if (disc === undefined || text === undefined) return
+  disc.textContent = String(seat.number)
+
+  const name = text.children[0]
+  if (name !== undefined) name.textContent = ''
+  const note = text.children[1]
+  if (note !== undefined) text.removeChild(note)
 }
 
 /**
@@ -442,7 +532,11 @@ function syncPeople(dom: TableDom, participants: readonly ParticipantSnapshot[])
     if (chip.parentNode !== dom.people || chip.previousSibling !== previous) {
       dom.people.insertBefore(chip, previous === null ? dom.people.firstChild : previous.nextSibling)
     }
-    updateChip(chip, person, index)
+    // No seat exists yet at this phase — nobody may join before a game is
+    // chosen, so this row is the host alone — so the row's own position is
+    // the only thing to colour by, one-based to match how `seatColor` names
+    // its slots.
+    updateChip(chip, person, seatColor(index + 1))
     previous = chip
   }
 
@@ -464,6 +558,114 @@ export function renderTable(root: HTMLElement, view: TvView): void {
     existing !== undefined && existing.code === view.code && existing.stage.parentNode === root
 
   syncPeople(reusable && existing !== undefined ? existing : buildTable(root, view), view.participants)
+}
+
+/**
+ * The badge that marks the baton holder, independent of any seat.
+ *
+ * It is drawn in the eyebrow row rather than as one more chip in the seats
+ * row, on purpose: the host may hold no seat at all, so there is no slot in
+ * that row to draw him in, and a row sized for `seats.length` has no spare
+ * place for him even when he does sit — the row is already proven to fit at
+ * `MAX_SEATS`, and a host who sits *and* keeps a separate badge would be
+ * `MAX_SEATS + 1` identities wide in the worst case. One fixed-size badge,
+ * always in the same place, sidesteps that entirely.
+ *
+ * There is always exactly one baton holder for as long as a table exists, so
+ * `batonHolder === null` is not a state this screen expects to draw — it is
+ * handled by leaving the badge blank rather than by throwing, because a
+ * table drawn with one missing label is a smaller failure on a television
+ * than a blank screen.
+ */
+function updateHost(host: HTMLElement, batonHolder: ParticipantSnapshot | null): void {
+  if (batonHolder === null) {
+    host.textContent = ''
+    return
+  }
+  const glyph = avatarGlyph(batonHolder.avatarId)
+  const name = batonHolder.nickname === '' ? NO_NICKNAME : batonHolder.nickname
+  host.textContent = glyph === null ? `${HOST_LABEL} ${name}` : `${HOST_LABEL} ${glyph} ${name}`
+}
+
+/**
+ * What is currently on the seating screen — the eyebrow, the host badge, the
+ * code and the QR while `qrVisible`, and one chip per seat, built once in
+ * seat order and never reordered: unlike the join screen's row, a seat's
+ * place in this row is its own number, fixed for as long as the seats exist.
+ */
+function buildSeating(root: HTMLElement, view: SeatingView): SeatingDom {
+  root.textContent = ''
+
+  const stage = element('div', 'm8-stage')
+  const eyebrow = element('div', 'm8-eyebrow-row')
+  eyebrow.appendChild(element('p', 'm8-wordmark', DISPLAY_FACE_STRINGS.wordmark))
+  const host = element('p', 'm8-host')
+  eyebrow.appendChild(host)
+  stage.appendChild(eyebrow)
+
+  if (view.qrVisible) {
+    // The same five pieces the join screen scatters, through the same
+    // function, so a table that is still being seated looks like the same
+    // table that was waiting for the host — not a second design.
+    const placements = arrangePieces(view.code, PIECE_COUNT)
+    const table = surface('m8-table-seating')
+    const block = element('div', 'm8-code-block')
+    block.appendChild(codeTiles(view.code, placements))
+    block.appendChild(element('p', 'm8-address', view.address))
+    table.appendChild(block)
+    table.appendChild(qrPiece(placements[QR_PIECE_INDEX], view.code))
+    stage.appendChild(table)
+  }
+
+  const seats = element('ul', 'm8-people')
+  seats.setAttribute('data-abreast', String(Math.min(view.seats.length, CHIPS_ABREAST)))
+  const seatChips: HTMLElement[] = []
+  for (const seat of view.seats) {
+    const chip = newChip()
+    seats.appendChild(chip)
+    seatChips.push(chip)
+  }
+  stage.appendChild(seats)
+
+  root.appendChild(stage)
+  const dom: SeatingDom = { code: view.code, qrVisible: view.qrVisible, stage, host, seats, seatChips }
+  seatingScreens.set(root, dom)
+  return dom
+}
+
+/** Brings every seat, and the host badge, up to date without disturbing the tree. */
+function syncSeating(dom: SeatingDom, view: SeatingView): void {
+  for (let index = 0; index < view.seats.length; index += 1) {
+    const seat = view.seats[index]
+    const chip = dom.seatChips[index]
+    if (seat === undefined || chip === undefined) continue
+    if (seat.occupant === null) updateEmptySeat(chip, seat)
+    else updateChip(chip, seat.occupant, seatColor(seat.number))
+  }
+  updateHost(dom.host, view.batonHolder)
+}
+
+/**
+ * The seats around the table: who is sitting where, which places are still
+ * open, the QR while any is, and the baton holder marked whether or not he
+ * is one of them.
+ *
+ * Reuses its tree exactly as `renderTable` and `renderChoosing` do, and adds
+ * one more reason to: unlike either of those, whether the QR is on the table
+ * at all can change between two renders of the *same* table, the instant the
+ * last seat fills or a seated player leaves — so that, and not only the
+ * code, is part of what "the same screen" means here.
+ */
+export function renderSeating(root: HTMLElement, view: SeatingView): void {
+  const existing = seatingScreens.get(root)
+  const reusable =
+    existing !== undefined &&
+    existing.code === view.code &&
+    existing.qrVisible === view.qrVisible &&
+    existing.seatChips.length === view.seats.length &&
+    existing.stage.parentNode === root
+
+  syncSeating(reusable && existing !== undefined ? existing : buildSeating(root, view), view)
 }
 
 /**
@@ -529,11 +731,10 @@ export function renderError(root: HTMLElement, code: ErrorCode): void {
  * Nothing in this plan can start a match, so `playing`, `paused`,
  * `awaiting-seat` and `finished` can arrive on the wire but never really
  * happen; they fall to the waiting screen the room already saw before the
- * first `tableState` did. `seating` falls the same way for a different
- * reason — it is drawn by the next plan, not this one. And `choosing-game`
- * itself falls there too in the one instant nobody has previewed a game
- * yet: the host has arrived but not tapped anything, `table.preview` is
- * still `null`, and there is nothing this plan draws for that moment either.
+ * first `tableState` did. `choosing-game` falls there too in the one instant
+ * nobody has previewed a game yet: the host has arrived but not tapped
+ * anything, `table.preview` is still `null`, and there is nothing this plan
+ * draws for that moment either.
  *
  * A `switch` that silently rendered nothing for a phase it had not met yet
  * would leave a blank television with no way to tell why — the one failure
@@ -563,6 +764,15 @@ export function renderScreen(root: HTMLElement, table: TableSnapshot, address: s
       return
 
     case 'seating':
+      renderSeating(root, {
+        code: table.code,
+        address,
+        seats: table.seats,
+        qrVisible: table.qrVisible,
+        batonHolder: table.participants.find((person) => person.hasBaton) ?? null,
+      })
+      return
+
     case 'playing':
     case 'paused':
     case 'awaiting-seat':

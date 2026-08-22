@@ -1,6 +1,6 @@
 import { AVATARS, avatarGlyph } from '@m8/avatars'
 import { NICKNAME_MAX_LENGTH, type ErrorCode, type ServerToClient, type TableSnapshot } from '@m8/protocol'
-import { PERSON_COLOR_PROPERTY, personColor } from '@m8/tokens'
+import { PERSON_COLOR_PROPERTY, seatColor } from '@m8/tokens'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { codeFromLocation, connectPhone, type PhoneClient } from './client.js'
 import { avatarTileClassName, describeProfileSubmission } from './profile.js'
@@ -8,18 +8,20 @@ import { determineScreen, errorText } from './screen.js'
 
 /**
  * The screen is themed in this person's own colour, which is the same colour
- * their chip carries on the television. Both read it from the same place —
- * the participant's index in the snapshot the server sent — so the two
- * cannot disagree about who is coral.
+ * their chip carries on the television. Both read it from the same seat
+ * number — the one field neither side can disagree about, because it is
+ * assigned once when the seat is created and never moves — rather than from
+ * an arrival index that used to shift for everyone whenever somebody left.
  *
- * Nobody has a colour before the server has answered; those screens get no
- * property at all and the stylesheet's fallback applies.
+ * Nobody without a seat has a colour: not before the server has answered,
+ * and not the host, who may run the table without occupying a chair. Those
+ * screens get no property at all and the stylesheet's fallback applies.
  */
 function personTheme(table: TableSnapshot | null, participantId: string | null): CSSProperties {
   if (table === null || participantId === null) return {}
-  const arrivalIndex = table.participants.findIndex((person) => person.id === participantId)
-  if (arrivalIndex < 0) return {}
-  return { [PERSON_COLOR_PROPERTY]: personColor(arrivalIndex) } as CSSProperties
+  const seat = table.seats.find((candidate) => candidate.occupant?.id === participantId)
+  if (seat === undefined) return {}
+  return { [PERSON_COLOR_PROPERTY]: seatColor(seat.number) } as CSSProperties
 }
 
 /**
