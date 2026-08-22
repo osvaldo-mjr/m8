@@ -1,16 +1,30 @@
 // @vitest-environment jsdom
 import { AVATARS } from '@m8/avatars'
-import type { ParticipantSnapshot } from '@m8/protocol'
-import { personColor } from '@m8/tokens'
+import { NICKNAME_MAX_LENGTH, type ParticipantSnapshot, type PreviewSnapshot, type SeatSnapshot, type TableSnapshot } from '@m8/protocol'
+import { seatColor } from '@m8/tokens'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CHIPS_ABREAST,
   DISPLAY_FACE_STRINGS,
   DISPLAY_FACE_SUBSET,
+  SCREEN_LOCALE,
+  renderChoosing,
   renderError,
+  renderScreen,
+  renderSeating,
   renderTable,
   renderWaiting,
 } from './render.js'
+import type { ChoosingView, SeatingView } from './render.js'
+
+/** How many steps sideways a piece throws its shadow, as the renderer wrote it. */
+function shadowAcross(piece: HTMLElement): number {
+  const match = /^calc\(var\(--m8-shadow-step\) \* (-?\d+)\)/.exec(piece.style.boxShadow)
+  if (match === null || match[1] === undefined) {
+    throw new Error(`No sideways shadow: ${piece.style.boxShadow}`)
+  }
+  return Number.parseInt(match[1], 10)
+}
 
 /** What a screen on the owner's LAN would actually have been reached at. */
 const ADDRESS = '192.168.0.6:3000'
@@ -242,15 +256,6 @@ describe('the code, drawn as four objects', () => {
     return Array.from(target.querySelectorAll('.m8-tile'))
   }
 
-  /** How many steps sideways a piece throws its shadow, as the renderer wrote it. */
-  function shadowAcross(piece: HTMLElement): number {
-    const match = /^calc\(var\(--m8-shadow-step\) \* (-?\d+)\)/.exec(piece.style.boxShadow)
-    if (match === null || match[1] === undefined) {
-      throw new Error(`No sideways shadow: ${piece.style.boxShadow}`)
-    }
-    return Number.parseInt(match[1], 10)
-  }
-
   it('draws one tile per character rather than one string', () => {
     // The alphabet has no O, no I, no zero and no one because every
     // character of a code is read out on its own and typed on its own. Four
@@ -371,7 +376,15 @@ describe('the code, drawn as four objects', () => {
   })
 })
 
-describe('the colour each person is given', () => {
+describe('the colour of the row before any seat exists', () => {
+  // Nobody joins before a game is chosen (spec 3.1), so this row is the host
+  // alone, and always was — nothing here ever has a second person to shift.
+  // What used to be tested here as "arrival order" was really just this row's
+  // own position pushed through the same colour function every other row on
+  // this screen uses. Genuine seat-colour stability under a departure —
+  // several people, one of them leaving, none of the survivors' colours
+  // moving — is covered where it is actually reachable: `renderSeating`, in
+  // `the colour a seat is given` below.
   function chips(target: HTMLElement = root): HTMLElement[] {
     return Array.from(target.querySelectorAll('.m8-chip'))
   }
@@ -400,10 +413,7 @@ describe('the colour each person is given', () => {
     }
   })
 
-  it('hands out colours in arrival order, which is what the phone reads too', () => {
-    // The phone finds the same participant at the same index of the same
-    // snapshot. What makes that hold after somebody leaves, and not only on
-    // the way in, is covered in `when somebody leaves` below.
+  it('colours the row by position, one-based to match a seat number', () => {
     renderTable(root, { code: 'KXTP', address: ADDRESS, participants: three })
     expect(chips().map(colorOf)).toEqual([
       'var(--m8-person-1)',
@@ -420,70 +430,23 @@ describe('the colour each person is given', () => {
     expect(colorOf(chips()[0] as HTMLElement)).toBe(first)
   })
 
-  /**
-   * What a departure does to the colours, which nothing covered before: the
-   * suite tested a join and stopped there, and a join is the one case where
-   * writing the colour once, when the element is created, happens to be
-   * right.
-   *
-   * The sequence below is the milestone's own definition of done — somebody
-   * leaves for good and a third person scans the code and takes their place —
-   * and it used to produce two people at one table wearing the same colour,
-   * which is the single failure this whole idea exists to prevent.
-   */
-  describe('when somebody leaves', () => {
-    const four = [
-      participant({ id: 'p-a', nickname: 'Ana' }),
-      participant({ id: 'p-b', nickname: 'Bia' }),
-      participant({ id: 'p-c', nickname: 'Caio' }),
-      participant({ id: 'p-d', nickname: 'Duda' }),
-    ]
-    const withoutBia = [four[0], four[2], four[3]] as ParticipantSnapshot[]
-    const eve = participant({ id: 'p-e', nickname: 'Eva' })
+  it('still shifts a survivor one colour along when somebody ahead of them leaves', () => {
+    // Deliberately unguarded against the bug this whole task removes: this
+    // row is coloured by array position, the same mechanism `personColor`
+    // used to be. That is safe only because nobody may join before a game is
+    // chosen (spec 3.1), so the row this function actually draws never holds
+    // more than the host alone — the departure below cannot happen for real.
+    // Pinned anyway, so a later reader who "fixes" this row in place, without
+    // reading that it is unreachable, gets a red test rather than a silent
+    // reintroduction of the bug `renderSeating` was built to remove.
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: three })
+    const thirdBefore = colorOf(chips()[2] as HTMLElement)
 
-    function colors(): string[] {
-      return chips().map(colorOf)
-    }
+    const withoutAna = [three[1], three[2]] as ParticipantSnapshot[]
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutAna })
 
-    it('shifts everybody behind them one colour along', () => {
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: four })
-      expect(colors()).toEqual([
-        'var(--m8-person-1)',
-        'var(--m8-person-2)',
-        'var(--m8-person-3)',
-        'var(--m8-person-4)',
-      ])
-
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutBia })
-      // Which is exactly what the phone computes from the same snapshot, and
-      // is the trade `packages/tokens/src/person-color.ts` writes down: a
-      // colour follows an index, not a person, so no two people can share one.
-      expect(colors()).toEqual(['var(--m8-person-1)', 'var(--m8-person-2)', 'var(--m8-person-3)'])
-    })
-
-    it('does not hand the next person a colour somebody is already wearing', () => {
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: four })
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutBia })
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: [...withoutBia, eve] })
-
-      expect(colors()).toEqual([
-        'var(--m8-person-1)',
-        'var(--m8-person-2)',
-        'var(--m8-person-3)',
-        'var(--m8-person-4)',
-      ])
-      expect(new Set(colors()).size).toBe(4)
-    })
-
-    it('agrees with what the phone computes from the same snapshot', () => {
-      // The two screens read the same index out of the same message. This is
-      // the assertion that the television is still doing that after a
-      // departure, rather than remembering what it drew before.
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: four })
-      renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutBia })
-
-      expect(colors()).toEqual(withoutBia.map((_person, index) => personColor(index)))
-    })
+    expect(colorOf(chips()[1] as HTMLElement)).not.toBe(thirdBefore)
+    expect(colorOf(chips()[1] as HTMLElement)).toBe(seatColor(2))
   })
 })
 
@@ -592,6 +555,483 @@ describe('the row of people, redrawn', () => {
 
     expect(chips()).toHaveLength(1)
     expect(root.textContent).toContain('Ana')
+  })
+})
+
+describe('renderChoosing', () => {
+  function view(overrides: Partial<ChoosingView> = {}): ChoosingView {
+    return {
+      code: 'KXTP',
+      cover: '/games/chess/cover.svg',
+      title: { 'pt-BR': 'A vez', en: 'Your turn' },
+      lines: {
+        'pt-BR': ['Mova uma peça por vez.', 'Cada peça se move à sua maneira.'],
+        en: ['Move one piece at a time.', 'Each piece moves its own way.'],
+      },
+      page: 1,
+      pageCount: 3,
+      ...overrides,
+    }
+  }
+
+  it('points the cover image at the URL the snapshot carries', () => {
+    renderChoosing(root, view())
+    const image = root.querySelector('.m8-box img')
+    expect(image?.getAttribute('src')).toBe('/games/chess/cover.svg')
+  })
+
+  it("shows the page's title and every one of its lines, in the screen locale", () => {
+    renderChoosing(root, view())
+    expect(root.textContent).toContain('A vez')
+    expect(root.textContent).toContain('Mova uma peça por vez.')
+    expect(root.textContent).toContain('Cada peça se move à sua maneira.')
+  })
+
+  it('never shows the locale the screen did not pick', () => {
+    renderChoosing(root, view())
+    expect(root.textContent).not.toContain('Your turn')
+    expect(root.textContent).not.toContain('Move one piece at a time.')
+  })
+
+  it('reads the page indicator from page and pageCount, one-based for the room', () => {
+    // `page` is the zero-based index the wire carries — the same one
+    // `clampPage` on the server produces — so page 1 of 3 reads "2 of 3".
+    renderChoosing(root, view({ page: 1, pageCount: 3 }))
+    expect(root.textContent).toContain('2 of 3')
+  })
+
+  it('renders nothing interactive', () => {
+    renderChoosing(root, view())
+    expect(root.querySelectorAll('button, a, input, [tabindex]')).toHaveLength(0)
+  })
+
+  it('replaces previous content instead of appending', () => {
+    renderChoosing(root, view())
+    renderChoosing(
+      root,
+      view({
+        title: { 'pt-BR': 'Xeque-mate', en: 'Checkmate' },
+        lines: { 'pt-BR': ['Ameace o rei sem escapatória.'], en: ['Threaten the king with no escape.'] },
+        page: 2,
+      }),
+    )
+    expect(root.textContent).not.toContain('A vez')
+    expect(root.textContent).not.toContain('Cada peça se move à sua maneira.')
+    expect(root.querySelectorAll('.m8-manual-line')).toHaveLength(1)
+  })
+
+  it('keeps the same cover element when only the page turns', () => {
+    // The one image on this screen anyone stares at while the host flips
+    // pages. Rebuilding it on every `manualPage` tap would refetch and
+    // blink it, the same defect the QR's own reuse test guards against.
+    renderChoosing(root, view())
+    const first = root.querySelector('.m8-box img')
+
+    renderChoosing(root, view({ page: 2, title: { 'pt-BR': 'Xeque-mate', en: 'Checkmate' } }))
+
+    expect(root.querySelector('.m8-box img')).toBe(first)
+  })
+
+  it('builds a new box and manual when the table code changes', () => {
+    renderChoosing(root, view())
+    const first = root.querySelector('.m8-box img')
+
+    renderChoosing(root, view({ code: 'MNBV' }))
+
+    expect(root.querySelector('.m8-box img')).not.toBe(first)
+  })
+
+  it('gives each root its own box and manual', () => {
+    const other = document.createElement('div')
+    renderChoosing(root, view())
+    renderChoosing(other, view())
+
+    expect(other.querySelector('.m8-box img')).not.toBe(root.querySelector('.m8-box img'))
+  })
+})
+
+describe('the box and the manual, drawn as two objects', () => {
+  function view(overrides: Partial<ChoosingView> = {}): ChoosingView {
+    return {
+      code: 'KXTP',
+      cover: '/games/chess/cover.svg',
+      title: { 'pt-BR': 'A vez', en: 'Your turn' },
+      lines: { 'pt-BR': ['Mova uma peça por vez.'], en: ['Move one piece at a time.'] },
+      page: 0,
+      pageCount: 3,
+      ...overrides,
+    }
+  }
+
+  function box(target: HTMLElement = root): HTMLElement {
+    return target.querySelector('.m8-box') as HTMLElement
+  }
+
+  function manual(target: HTMLElement = root): HTMLElement {
+    return target.querySelector('.m8-manual') as HTMLElement
+  }
+
+  it('turns and lifts both the box and the manual, through the same scatter the table already has', () => {
+    renderChoosing(root, view())
+    for (const piece of [box(), manual()]) {
+      expect(piece.style.transform).toMatch(/^translateY\(calc\(var\(--m8-.*\)\) rotate\(-?\d/)
+    }
+  })
+
+  it('gives both the QR-scale step rather than the code tile step', () => {
+    // The box and the manual are large single objects, like the QR, and not
+    // a row several of which share a baseline, like the code tiles — so they
+    // take the QR's smaller step for the reason `tilt.ts` gives: a large
+    // lift on a large piece costs more room than it buys.
+    renderChoosing(root, view())
+    for (const piece of [box(), manual()]) {
+      expect(piece.style.transform).toContain('var(--m8-qr-scatter-step)')
+    }
+  })
+
+  it('throws the box shadow left and the manual shadow right', () => {
+    // Left to right on the table, same as the code tiles and the QR: the
+    // lamp is over the middle, so the leftmost piece throws left and the
+    // rightmost throws right.
+    renderChoosing(root, view())
+    expect(shadowAcross(box())).toBeLessThan(0)
+    expect(shadowAcross(manual())).toBeGreaterThan(0)
+  })
+
+  it('keeps the table itself square, never turned', () => {
+    renderChoosing(root, view())
+    expect((root.querySelector('.m8-table') as HTMLElement).style.transform).toBe('')
+  })
+
+  it('arranges the same table the same way every time it redraws', () => {
+    renderChoosing(root, view())
+    const before = box().style.transform
+
+    renderChoosing(root, view({ page: 1, title: { 'pt-BR': 'Outra', en: 'Other' } }))
+
+    expect(box().style.transform).toBe(before)
+  })
+
+  it('arranges a different table differently', () => {
+    renderChoosing(root, view())
+    const first = box().style.transform
+
+    const other = document.createElement('div')
+    renderChoosing(other, view({ code: 'MNBV' }))
+
+    expect(box(other).style.transform).not.toBe(first)
+  })
+})
+
+describe('renderSeating', () => {
+  function seat(overrides: Partial<SeatSnapshot> = {}): SeatSnapshot {
+    return { number: 1, occupant: null, ...overrides }
+  }
+
+  function view(overrides: Partial<SeatingView> = {}): SeatingView {
+    return {
+      code: 'KXTP',
+      address: ADDRESS,
+      seats: [],
+      qrVisible: true,
+      batonHolder: null,
+      ...overrides,
+    }
+  }
+
+  function chips(target: HTMLElement = root): HTMLElement[] {
+    return Array.from(target.querySelectorAll('.m8-chip'))
+  }
+
+  it("shows an occupant's avatar and nickname in that seat's own colour", () => {
+    renderSeating(
+      root,
+      view({ seats: [seat({ number: 2, occupant: participant({ nickname: 'Bia', avatarId: 'fox' }) })] }),
+    )
+    const chip = chips()[0] as HTMLElement
+    expect(chip.textContent).toContain('Bia')
+    expect(chip.style.getPropertyValue('--m8-person')).toBe(seatColor(2))
+  })
+
+  it('renders an empty seat as a place at the table, not as a gap', () => {
+    renderSeating(
+      root,
+      view({
+        seats: [seat({ number: 1, occupant: null }), seat({ number: 2, occupant: participant() })],
+      }),
+    )
+    expect(chips()).toHaveLength(2)
+    expect(chips()[0]?.className).toContain('m8-chip-away')
+    expect(chips()[0]?.style.getPropertyValue('--m8-person')).toBe(seatColor(1))
+  })
+
+  it('tells an empty seat apart from one claimed but not yet named', () => {
+    // Both draw a mostly-blank chip; only the empty one carries the seat's
+    // own number, since the other genuinely has somebody in it.
+    renderSeating(
+      root,
+      view({
+        seats: [
+          seat({ number: 1, occupant: null }),
+          seat({ number: 2, occupant: participant({ id: 'p-2', nickname: '', avatarId: 'unset' }) }),
+        ],
+      }),
+    )
+    expect(chips()[0]?.textContent).toBe('1')
+    expect(chips()[1]?.textContent).toBe('…')
+  })
+
+  it('shows the QR while a seat is free', () => {
+    renderSeating(root, view({ qrVisible: true, seats: [seat({ number: 1 })] }))
+    expect(root.querySelector('.m8-qr img')).not.toBeNull()
+  })
+
+  it('hides the QR the instant the last seat fills', () => {
+    renderSeating(root, view({ qrVisible: false, seats: [seat({ number: 1, occupant: participant() })] }))
+    expect(root.querySelector('.m8-qr')).toBeNull()
+  })
+
+  it('takes the QR off the table the moment qrVisible flips, not only when it starts false', () => {
+    // The stronger form of the test above: the same table, one seat still
+    // free, then the same table with that seat just taken — the actual
+    // transition the domain calls "the instant the last seat fills", rather
+    // than two screens that never shared a root.
+    renderSeating(root, view({ qrVisible: true, seats: [seat({ number: 1 })] }))
+    expect(root.querySelector('.m8-qr')).not.toBeNull()
+
+    renderSeating(root, view({ qrVisible: false, seats: [seat({ number: 1, occupant: participant() })] }))
+    expect(root.querySelector('.m8-qr')).toBeNull()
+  })
+
+  it('brings the QR back if a seat empties again', () => {
+    renderSeating(root, view({ qrVisible: false, seats: [seat({ number: 1, occupant: participant() })] }))
+    renderSeating(root, view({ qrVisible: true, seats: [seat({ number: 1, occupant: null })] }))
+    expect(root.querySelector('.m8-qr img')).not.toBeNull()
+  })
+
+  it('marks the baton holder even when he holds no seat', () => {
+    const host = participant({ id: 'p-host', nickname: 'Duda', hasBaton: true })
+    renderSeating(
+      root,
+      view({
+        seats: [seat({ number: 1, occupant: participant({ id: 'p-1', nickname: 'Ana' }) })],
+        batonHolder: host,
+      }),
+    )
+    expect(root.textContent).toContain('Duda')
+    // Not seated: the only chip in the row belongs to whoever actually is.
+    expect(chips()).toHaveLength(1)
+  })
+
+  it('draws the badge for the longest nickname a player can actually submit', () => {
+    // NICKNAME_MAX_LENGTH is the wire's own ceiling (`@m8/protocol`) — the
+    // longest string that ever reaches this badge for real, not a
+    // hypothetical. jsdom computes no layout, so this cannot prove a pixel
+    // width; what makes that length safe regardless — a bounded, truncating
+    // box rather than one that grows with its content — is `.m8-host` in
+    // `styles.css`, proven in `scripts/tv-safe-area.test.ts`. This proves
+    // the other half: the screen still renders it, whole, without throwing.
+    const longest = 'A'.repeat(NICKNAME_MAX_LENGTH)
+    const host = participant({ id: 'p-host', nickname: longest, hasBaton: true })
+    renderSeating(root, view({ seats: [seat({ number: 1 })], batonHolder: host }))
+    expect(root.textContent).toContain(longest)
+  })
+
+  it('names nobody when there happens to be no baton holder to mark', () => {
+    // Unreachable in the real product — a table always has one — but a
+    // screen that threw on a missing field would be a worse failure than a
+    // blank badge, so this pins that it does not.
+    renderSeating(root, view({ seats: [seat({ number: 1 })], batonHolder: null }))
+    expect(() => renderSeating(root, view({ seats: [seat({ number: 1 })], batonHolder: null }))).not.toThrow()
+  })
+
+  it('tells the stylesheet how many seats sit abreast', () => {
+    renderSeating(root, view({ seats: [seat({ number: 1 }), seat({ number: 2 })] }))
+    expect(root.querySelector('.m8-people')?.getAttribute('data-abreast')).toBe('2')
+  })
+
+  it('renders nothing interactive', () => {
+    renderSeating(
+      root,
+      view({
+        seats: [seat({ number: 1, occupant: participant() })],
+        batonHolder: participant({ hasBaton: true }),
+      }),
+    )
+    expect(root.querySelectorAll('button, a, input, [tabindex]')).toHaveLength(0)
+  })
+
+  it('renders a nickname as text, never as markup', () => {
+    const hostile = '<img src=x onerror=alert(1)>'
+    renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant({ nickname: hostile }) })] }))
+    expect(root.textContent).toContain(hostile)
+    expect(root.querySelector('img[src="x"]')).toBeNull()
+  })
+
+  it('keeps the same QR element across renders while a seat stays free', () => {
+    renderSeating(root, view({ seats: [seat({ number: 1 })] }))
+    const first = root.querySelector('img')
+
+    renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant() })] }))
+    expect(root.querySelector('img')).toBe(first)
+  })
+
+  it('builds a new QR element when the table code changes', () => {
+    renderSeating(root, view({ code: 'KXTP', seats: [seat({ number: 1 })] }))
+    const first = root.querySelector('img')
+
+    renderSeating(root, view({ code: 'MNBV', seats: [seat({ number: 1 })] }))
+    expect(root.querySelector('img')).not.toBe(first)
+  })
+
+  it('replaces previous content instead of appending', () => {
+    renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant({ nickname: 'Ana' }) })] }))
+    renderSeating(root, view({ seats: [] }))
+    expect(root.textContent).not.toContain('Ana')
+  })
+
+  it("draws every seat at the table's hard capacity without crashing", () => {
+    // MAX_SEATS in `@m8/contract`, and `MAX_PARTICIPANTS` in `@m8/core`, are
+    // both 8 — asserted equal in `apps/server/src/limits.test.ts`, the one
+    // place that sees both packages. `apps/tv/src` is typechecked under its
+    // own narrow project (`apps/tv/tsconfig.json`) and imports neither, so
+    // the number is written out here rather than imported; the arithmetic
+    // that proves this many seats actually fit on screen, at every tilt and
+    // both resolutions, lives in `scripts/tv-safe-area.test.ts`.
+    const eight = Array.from({ length: 8 }, (_unused, index) =>
+      seat({
+        number: index + 1,
+        occupant: index % 2 === 0 ? participant({ id: `p-${index}`, nickname: `P${index}` }) : null,
+      }),
+    )
+    renderSeating(root, view({ seats: eight, qrVisible: false }))
+
+    expect(chips()).toHaveLength(8)
+    const colors = new Set(chips().map((chip) => chip.style.getPropertyValue('--m8-person')))
+    expect(colors.size).toBe(8)
+  })
+
+  describe('the colour a seat is given', () => {
+    it('is unaffected by another seat emptying', () => {
+      const ana = participant({ id: 'p-1', nickname: 'Ana' })
+      const caio = participant({ id: 'p-3', nickname: 'Caio' })
+      renderSeating(
+        root,
+        view({
+          seats: [
+            seat({ number: 1, occupant: ana }),
+            seat({ number: 2, occupant: participant({ id: 'p-2', nickname: 'Bia' }) }),
+            seat({ number: 3, occupant: caio }),
+          ],
+        }),
+      )
+      const thirdBefore = chips()[2]?.style.getPropertyValue('--m8-person')
+
+      // Seat 2's occupant leaves for good; the row's other two seats do not move.
+      renderSeating(
+        root,
+        view({
+          seats: [seat({ number: 1, occupant: ana }), seat({ number: 2, occupant: null }), seat({ number: 3, occupant: caio })],
+        }),
+      )
+
+      expect(chips()[2]?.style.getPropertyValue('--m8-person')).toBe(thirdBefore)
+      expect(chips()[2]?.style.getPropertyValue('--m8-person')).toBe(seatColor(3))
+    })
+
+    it('is inherited by whoever takes the seat next, not carried away by who left', () => {
+      renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant({ id: 'p-1', nickname: 'Ana' }) })] }))
+      renderSeating(root, view({ seats: [seat({ number: 1, occupant: participant({ id: 'p-2', nickname: 'Bia' }) })] }))
+
+      const chip = chips()[0] as HTMLElement
+      expect(chip.textContent).toContain('Bia')
+      expect(chip.style.getPropertyValue('--m8-person')).toBe(seatColor(1))
+    })
+  })
+})
+
+describe('renderScreen', () => {
+  const ADDRESS = '192.168.0.6:3000'
+
+  function preview(overrides: Partial<PreviewSnapshot> = {}): PreviewSnapshot {
+    return {
+      gameId: 'chess',
+      cover: '/games/chess/cover.svg',
+      name: { 'pt-BR': 'Xadrez', en: 'Chess' },
+      page: 0,
+      pageCount: 3,
+      title: { 'pt-BR': 'O tabuleiro', en: 'The board' },
+      lines: { 'pt-BR': ['Oito por oito casas.'], en: ['Eight by eight cells.'] },
+      ...overrides,
+    }
+  }
+
+  function table(overrides: Partial<TableSnapshot> = {}): TableSnapshot {
+    return {
+      code: 'KXTP',
+      phase: 'awaiting-host',
+      participants: [],
+      seats: [],
+      qrVisible: true,
+      preview: null,
+      ...overrides,
+    }
+  }
+
+  it('draws the join screen while awaiting the host', () => {
+    renderScreen(root, table({ participants: [participant({ nickname: 'Ana' })] }), ADDRESS)
+    expect(root.textContent).toContain('Ana')
+    expect(root.textContent).toContain('KXTP')
+  })
+
+  it('draws the box and the manual once a game is being previewed', () => {
+    renderScreen(root, table({ phase: 'choosing-game', preview: preview() }), ADDRESS)
+    expect(root.textContent).toContain('O tabuleiro')
+    expect(root.querySelector('.m8-box img')?.getAttribute('src')).toBe('/games/chess/cover.svg')
+  })
+
+  it('falls back to the waiting screen while choosing a game before anyone has previewed one', () => {
+    // The instant between arriving at this phase and the first
+    // `previewGame` — `table.preview` is still null, and this plan draws
+    // nothing else for that moment.
+    renderScreen(root, table({ phase: 'choosing-game', preview: null }), ADDRESS)
+    expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.waiting)
+  })
+
+  it('draws the seats, and the baton holder, once seating begins', () => {
+    renderScreen(
+      root,
+      table({
+        phase: 'seating',
+        seats: [
+          { number: 1, occupant: participant({ nickname: 'Ana', hasBaton: true }) },
+          { number: 2, occupant: null },
+        ],
+        participants: [participant({ nickname: 'Ana', hasBaton: true })],
+      }),
+      ADDRESS,
+    )
+    expect(root.querySelectorAll('.m8-chip')).toHaveLength(2)
+    expect(root.textContent).toContain('Ana')
+  })
+
+  // Nothing in this plan can start a match, so these four phases can arrive
+  // on the wire but never really happen. Named individually, because a
+  // `switch` silently rendering nothing for one of them would leave a blank
+  // television with no way to tell why — the one failure this target cannot
+  // be debugged through.
+  it.each(['playing', 'paused', 'awaiting-seat', 'finished'] as const)(
+    'falls back to the waiting screen for the unreachable phase %s',
+    (phase) => {
+      renderScreen(root, table({ phase }), ADDRESS)
+      expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.waiting)
+    },
+  )
+
+  it('clears the box and the manual once the phase moves past choosing', () => {
+    renderScreen(root, table({ phase: 'choosing-game', preview: preview() }), ADDRESS)
+    renderScreen(root, table({ phase: 'seating' }), ADDRESS)
+    expect(root.querySelector('.m8-box')).toBeNull()
   })
 })
 

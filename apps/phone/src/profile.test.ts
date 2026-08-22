@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { avatarTileClassName, describeProfileSubmission } from './profile.js'
+import { avatarTileClassName, describeProfileSubmission, primaryButtonClassName } from './profile.js'
 
 describe('describeProfileSubmission', () => {
   it('cannot submit an empty nickname, and says why', () => {
@@ -47,5 +47,38 @@ describe('avatarTileClassName', () => {
     // that one class from each must still leave them different.
     const strip = (className: string) => className.replace('m8-person-bg', '').trim()
     expect(strip(avatarTileClassName(true))).not.toBe(strip(avatarTileClassName(false)))
+  })
+})
+
+describe('primaryButtonClassName', () => {
+  // Written out three times before this existed: on TAKE A PLACE, on PLAY
+  // THIS, and on START, the first two byte-identical and the third differing
+  // only by its width. There is no DOM testing library here either, so what
+  // this guards is the same thing `avatarTileClassName` does — that the two
+  // states stay told apart by something other than a colour, since a disabled
+  // control drawn as the same button faded out is the failure this shape
+  // exists to avoid.
+  it('fills an enabled button, and outlines a disabled one instead of fading it', () => {
+    expect(primaryButtonClassName(true)).toContain('m8-person-bg')
+    expect(primaryButtonClassName(false)).not.toContain('m8-person-bg')
+    expect(primaryButtonClassName(false)).toContain('border-current')
+  })
+
+  it('keeps the two states apart by more than the fill colour class', () => {
+    const strip = (className: string) => className.replace('m8-person-bg', '').trim()
+    expect(strip(primaryButtonClassName(true))).not.toBe(strip(primaryButtonClassName(false)))
+  })
+
+  it('adds a full width only when asked, in either state', () => {
+    expect(primaryButtonClassName(true, { fullWidth: true })).toContain('w-full')
+    expect(primaryButtonClassName(false, { fullWidth: true })).toContain('w-full')
+    expect(primaryButtonClassName(true)).not.toContain('w-full')
+    expect(primaryButtonClassName(false)).not.toContain('w-full')
+  })
+
+  it('changes nothing else about the button when widening it', () => {
+    const narrow = primaryButtonClassName(true).split(' ')
+    const wide = primaryButtonClassName(true, { fullWidth: true }).split(' ')
+    expect(wide.filter((token) => token !== 'w-full')).toEqual(narrow)
   })
 })

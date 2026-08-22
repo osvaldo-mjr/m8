@@ -123,6 +123,99 @@ supported on Chromium 68, and none has an experiment behind it.
       `docs/notes/visual-identity-report.md` is wrong on real hardware and
       needs to know.
 
+The steps below arrived with the catalogue and seats plan and have not been
+run on a real set yet.
+
+17. From a phone that has just joined (before any game is chosen), confirm
+    the catalogue lists all four games — chess, draughts, dominoes,
+    tic-tac-toe — each with its cover art, name and tagline in Portuguese.
+    Confirm chess, draughts and dominoes each carry a "SOON" badge in the
+    list and tic-tac-toe does not. Tap one of the "SOON" games: confirm its
+    box and manual still appear on the television — previewing a game that
+    is not yet playable is allowed — with a "COMING SOON" label on the
+    phone, and that its "PLAY THIS" button sits outlined rather than filled
+    and does nothing when tapped. Three of the four catalogue games are real
+    entries with no rules behind them yet; that is deliberate, not a defect,
+    and an operator who has not read this would take it for one. Back out to
+    the list and tap tic-tac-toe instead: confirm the television swaps in
+    tic-tac-toe's own box and manual — title "A mesa", page indicator
+    "1 of 3" — within about a second of the tap, with no page reload and no
+    flicker of the box art.
+18. With tic-tac-toe still open on the phone, tap the right arrow (›) twice.
+    Confirm the television's manual turns to "A vez" and then "Vitória" in
+    step with each tap, the page indicator reading "2 of 3" then "3 of 3",
+    and that only the manual changes — the box art beside it neither blinks
+    nor refetches. Keep tapping the right arrow past the last page: confirm
+    the indicator holds at "3 of 3" rather than going blank or erroring.
+    Then tap the left arrow (‹) **once**: confirm the television moves
+    immediately to "2 of 3". This is the step that matters most here — the
+    phone keeps its own page number and the server clamps silently, so a
+    phone that counted past the last page would spend one tap per overshoot
+    doing nothing visible, which reads in a living room as a broken remote.
+    Tap ‹ back past the first page as well: confirm it holds at "1 of 3",
+    and that one tap of › then moves to "2 of 3".
+19. Tap "PLAY THIS". Confirm the television leaves the box-and-manual screen
+    for the seating screen, showing the host already in the first seat with
+    his `HOST` badge — choosing a game seats whoever chose it — one empty
+    seat beside him, and the QR code, which returns because a chosen game
+    with a free seat is exactly the second case the design allows anyone to
+    join in. Scan the QR from a second phone: confirm the television's QR
+    disappears the instant the scan lands, before that phone has even been
+    given a name — the seat is claimed on arrival, not on naming, and the
+    QR's disappearance is the only visible proof of that ordering. Both of
+    tic-tac-toe's seats are now taken, so there is no third seat to claim:
+    what the host's "PLAYING" switch does from here is release his own. On
+    his phone, switch "PLAYING" **off**: confirm his chip leaves its seat on
+    the television, that the seat is drawn empty with its own number where
+    his avatar was, and that the QR comes back — a chosen game with a free
+    seat is again a table anyone may join. Confirm his phone keeps its host
+    controls throughout — the switch itself, and the START button beneath
+    it — since stepping out of a chair is not leaving the table. (There is
+    no catalogue to come back to: a game is chosen once, and this milestone
+    has no path back out of it.) Switch it back **on**: confirm he retakes
+    the free seat and the QR disappears the moment he does. That is the
+    switch's whole behaviour, both ways, and the QR following it is the
+    visible proof that the code is offered for a seat rather than for the
+    table.
+20. With both seats filled, confirm each phone shows its own seat's colour
+    filling the block behind its own avatar and name, and that this colour
+    is the same one the television draws on that seat's chip. The two
+    screens agreeing on whose colour is whose is what lets a phone in
+    someone's hand and a chip on the television, read from opposite ends of
+    a living room, be recognised as the same person.
+21. With one seat empty — either before the second phone scans, or during
+    the moment step 19 creates by switching "PLAYING" off — confirm the
+    host's phone shows a START button in its outlined, inactive state, with
+    "Waiting for one more player." printed beneath it. Once both seats are
+    filled, confirm START switches to its filled, lit state. Tap it:
+    confirm nothing starts, and the phone instead prints "The table is
+    ready. Starting the match arrives with the first real game — coming
+    soon." beneath the button. **This is
+    the expected outcome, not a failure.** The light-up at the minimum is
+    what this plan built and is what this step exists to check; starting an
+    actual match has no rules to start yet, and the tap says so on purpose
+    rather than doing nothing.
+
+**Not yet checkable: the round marker.** The design's round marker (§4.1)
+exists to refuse a phone left open across a "Clear seats" or "Change game" —
+the two end-of-match actions that empty the seats and require everyone to
+scan again (§4.2). Neither action has a wire message in this plan:
+`apps/server/src/session.ts` handles `hello`, `setProfile`, `leave`,
+`previewGame`, `manualPage`, `chooseGame` and `setHostPlaying` only, and
+nothing here ever advances `Table.round` past the `1` it starts at. The
+phone's own `hello` message (`apps/phone/src/client.ts`) never sends a
+`round` field either, on first join or on reconnection. So there is no
+path — scanning, reloading, leaving a phone in a pocket, or otherwise —
+through which the running application can produce a stale-round refusal
+today. The guard itself is real, and is proven where an automated test can
+reach it (`packages/core/src/table-registry.test.ts`,
+`describe('the round marker', ...)`), but nothing on a real television or a
+real phone exercises it yet — there is no operator action that would make
+one. This belongs in the checklist once a later plan wires "Clear seats" and
+"Change game" and has the phone send its stored round on every `hello`; a
+numbered step was not added for it here; adding one would ask the operator
+to confirm something nothing in the running application can yet cause.
+
 ## What to record on failure
 
 - The set's model and firmware year.
@@ -149,6 +242,12 @@ redesigning the platform.
 
 The room round on real hardware: floor, wooden table, lamp pool and directional
 shadows. The owner validated it.
+
+**What this verdict covers.** The checklist as it stood on that day, which ended
+at step 16. Steps 17 to 21 — the catalogue, the manual, choosing a game and the
+seats — arrived with a later plan and were not part of this run; they are marked
+above as not yet run on a real set. The PASS stands for the steps that existed
+then, and is not a verdict on the ones added since.
 
 **Observed, not fixed:** on some sets the table looks more stretched than on
 others — noticeable, not bad enough to act on yet.
@@ -225,15 +324,19 @@ worth recording because they justify the existence of this checklist:
 Still open:
 
 - The set model and firmware year.
-- The screen still gives no visual sign of who holds the baton — the same
-  defect as the first one above, in the same function, on an attribute
-  nobody can see. This was left for the visual identity pass, which has now
-  happened and did not settle it: the approved direction describes the code
-  tiles, the QR, the per-person colour and the row of people, and says
-  nothing about the baton. Inventing a mark for it would have been the one
-  thing that pass was told not to do. It stays open, and it is now a
-  question for whoever specifies the first game, where a baton-only action
-  finally exists to justify a mark.
+- The **join screen** still gives no visual sign of who holds the baton —
+  the same defect as the first one above, in the same function, on an
+  attribute nobody can see. The seating screen no longer has it: the
+  catalogue and seats plan gave the host's chip a `HOST` badge in the
+  eyebrow row, so from the moment a game is chosen the room can see who is
+  running the table. Before that moment it still cannot. This was left for
+  the visual identity pass, which happened and did not settle it: the
+  approved direction describes the code tiles, the QR, the per-person colour
+  and the row of people, and says nothing about the baton. Inventing a mark
+  for it would have been the one thing that pass was told not to do. What is
+  left of it is a question for whoever specifies the first game, where a
+  baton-only action finally exists to justify a mark on the one screen that
+  still lacks one.
 - Steps 10 to 13 (typography, tilt, the arrival pop, the per-person colour)
   have never been run on a television.
 

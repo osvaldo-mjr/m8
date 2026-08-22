@@ -9,13 +9,16 @@ import {
 } from '@m8/core'
 import { FakeTransport } from '@m8/transport'
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { ConnectionFault } from './faults.js'
 import { Session } from './session.js'
 
 let transport: FakeTransport
 let registry: TableRegistry
+let faults: ConnectionFault[]
 
 beforeEach(() => {
   transport = new FakeTransport()
+  faults = []
   registry = new TableRegistry({
     clock: new FixedClock(1_000),
     rng: createRng(2026),
@@ -23,7 +26,7 @@ beforeEach(() => {
     newToken: sequentialIds('t'),
     shard: 'A',
   })
-  new Session(transport, registry)
+  new Session(transport, registry, (fault) => faults.push(fault))
 })
 
 function firstOfType<T extends ServerToClient['type']>(
@@ -101,6 +104,7 @@ describe('a screen connecting', () => {
         newToken: sequentialIds('t'),
         shard: 'A',
       }),
+      (fault) => faults.push(fault),
     )
   }
 
@@ -256,7 +260,18 @@ describe('a full table', () => {
     transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
     const code = firstOfType('tv', 'tableReady').code
 
-    for (let i = 0; i < MAX_PARTICIPANTS; i += 1) {
+    transport.connect('phone-0')
+    transport.receive('phone-0', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+
+    // Only the host can join before a game is chosen. Choosing one directly
+    // through the registry stands in for the wire message a later task adds
+    // (see the working agreement: wiring chooseGame to the transport is out
+    // of scope here), so the rest of the table can still fill up to capacity.
+    const hostId = registry.getTable(code)?.batonHolderId
+    if (!hostId) throw new Error('host did not receive the baton')
+    registry.chooseGame(code, hostId, 'test-game', { min: 1, max: MAX_PARTICIPANTS })
+
+    for (let i = 1; i < MAX_PARTICIPANTS; i += 1) {
       transport.connect(`phone-${i}`)
       transport.receive(`phone-${i}`, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
     }
@@ -312,5 +327,324 @@ describe('one connection speaks for one participant', () => {
     // The baton is held by the one participant that exists, not by a ghost
     // no connection will ever speak for again.
     expect(table?.batonHolderId).toBe(table?.participants[0]?.id)
+  })
+})
+
+describe('the catalogue and seats messages', () => {
+  function openTable(): string {
+    transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    return firstOfType('tv', 'tableReady').code
+  }
+
+  function joinPhone(id: string, code: string): string {
+    transport.connect(id)
+    transport.receive(id, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    return firstOfType(id, 'welcome').participantId
+  }
+
+  it('sends the screen a tableState and never a deviceState', () => {
+    openTable()
+
+    const types = transport.sentTo('tv').map((m) => m.type)
+    expect(types).toContain('tableState')
+    expect(types).not.toContain('deviceState')
+  })
+
+  it('sends a phone a deviceState and never a tableState', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    // Asserting on the message *types* the fake transport recorded, not on
+    // any payload's contents: this is what would fail if a filtered table
+    // were ever built for a phone, whatever shape it took.
+    const types = transport.sentTo('host').map((m) => m.type)
+    expect(types).toContain('deviceState')
+    expect(types).not.toContain('tableState')
+  })
+
+  it('lets the baton holder put a preview on the table', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 0 })
+  })
+
+  it('refuses previewGame from a seated participant who does not hold the baton', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'chooseGame', gameId: 'tic-tac-toe' })
+    joinPhone('other', code)
+
+    transport.receive('other', { type: 'previewGame', gameId: 'checkers' })
+
+    // Refused as an action, not as a session: this phone holds a seat and is
+    // still at the table, and only the thing it just asked for did not happen.
+    expect(transport.sentTo('other')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
+    // chooseGame already cleared the preview; the refused call must not have
+    // put a new one there.
+    expect(registry.getTable(code)!.preview).toBeNull()
+  })
+
+  it('moves the preview page within range', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+
+    transport.receive('host', { type: 'manualPage', page: 1 })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 1 })
+  })
+
+  it('clamps a manualPage beyond the last page rather than erroring', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+
+    // tic-tac-toe's manual carries three pages in each locale: index 2 is
+    // the last.
+    transport.receive('host', { type: 'manualPage', page: 99 })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 2 })
+    // Neither kind of refusal: a clamp is not a refusal at all, so the
+    // phone is answered with state and nothing else.
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('error')
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('actionRefused')
+  })
+
+  it('clamps a manualPage below zero to the first page rather than erroring', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+    transport.receive('host', { type: 'manualPage', page: 1 })
+
+    transport.receive('host', { type: 'manualPage', page: -5 })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 0 })
+  })
+
+  it('creates seats via chooseGame and tells every device', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'chooseGame', gameId: 'tic-tac-toe' })
+
+    const table = registry.getTable(code)!
+    expect(table.phase).toBe('seating')
+    expect(table.seats).toHaveLength(2)
+
+    const hostDeviceMessages = transport.sentTo('host').filter((m) => m.type === 'deviceState')
+    const latestHostDevice = hostDeviceMessages[hostDeviceMessages.length - 1]
+    expect(latestHostDevice?.type === 'deviceState' && latestHostDevice.device.seatNumber).toBe(1)
+
+    const screenStates = transport.sentTo('tv').filter((m) => m.type === 'tableState')
+    const latestScreen = screenStates[screenStates.length - 1]
+    expect(latestScreen?.type === 'tableState' && latestScreen.table.seats).toHaveLength(2)
+  })
+
+  it('refuses chooseGame naming a game outside the catalogue, leaving the table unchanged', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'chooseGame', gameId: 'backgammon' })
+
+    const table = registry.getTable(code)!
+    expect(table.chosenGameId).toBeNull()
+    expect(table.phase).toBe('choosing-game')
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
+  })
+
+  it('refuses chooseGame for a game whose manifest is coming-soon, leaving the table unchanged', () => {
+    // 'chess' is in the catalogue but its manifest carries status
+    // 'coming-soon' (packages/games/chess/src/manifest.ts) — unlike
+    // 'backgammon' above, findManifest resolves it, so only a status check
+    // catches this. Without the guard, seats would be created for a game
+    // with no rules to ever start.
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'chooseGame', gameId: 'chess' })
+
+    const table = registry.getTable(code)!
+    expect(table.chosenGameId).toBeNull()
+    expect(table.seats).toHaveLength(0)
+    expect(table.phase).toBe('choosing-game')
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
+  })
+
+  it('still allows previewing a coming-soon game — only choosing it is refused', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'previewGame', gameId: 'chess' })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'chess', page: 0 })
+    // Previewing one is allowed outright, so neither kind of refusal is
+    // sent: the phone is answered with state and nothing else.
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('error')
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('actionRefused')
+  })
+
+  it('refuses a phone joining before a game is chosen', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.connect('second')
+    transport.receive('second', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+
+    expect(transport.sentTo('second')).toContainEqual({ type: 'error', code: 'not-allowed' })
+  })
+
+  it('refuses a phone presenting a stale round', () => {
+    const code = openTable()
+
+    transport.connect('host')
+    transport.receive('host', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code, round: 0 })
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'stale-round' })
+  })
+
+  it('rejects a fractional manualPage instead of crashing the table', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+
+    expect(() => {
+      transport.receive('host', { type: 'manualPage', page: 1.5 })
+    }).not.toThrow()
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'invalid-message' })
+    // The malformed message must not have moved the page it could not resolve.
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 0 })
+  })
+
+  it('refuses previewGame from the baton holder once a game is already chosen', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'chooseGame', gameId: 'tic-tac-toe' })
+
+    transport.receive('host', { type: 'previewGame', gameId: 'checkers' })
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
+    // chooseGame already cleared the preview; a stray previewGame after
+    // seating has opened must not put a new one there.
+    expect(registry.getTable(code)!.preview).toBeNull()
+  })
+})
+
+/**
+ * A refusal of an *action* is not a refusal of the *session*.
+ *
+ * Everything this milestone refused before this plan ended a device's session:
+ * an unknown table, a stale round, a table with no room. This plan added four
+ * messages a device sends while already seated at a live table — previewGame,
+ * manualPage, chooseGame and setHostPlaying — and every one of them can be
+ * refused for a reason that will not be true a moment later. Sent down the same
+ * channel, one such refusal replaced the host's whole interface with a dead
+ * end: he toggles PLAYING back on while both seats have since filled, is told
+ * `table-full`, and loses the catalogue, the switch and START with no way back
+ * but a reload. The refusal is right; ending his session over it is not.
+ */
+describe('a refusal of an action rather than of the session', () => {
+  function openTable(): string {
+    transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    return firstOfType('tv', 'tableReady').code
+  }
+
+  function joinPhone(id: string, code: string): string {
+    transport.connect(id)
+    transport.receive(id, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    return firstOfType(id, 'welcome').participantId
+  }
+
+  /**
+   * The whole path, exactly as a room reaches it: the host chooses a game and
+   * is seated, steps out of his chair, two other phones take both seats, and
+   * he asks to sit back down.
+   */
+  it('refuses the host a seat that is gone without ending his session', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'chooseGame', gameId: 'tic-tac-toe' })
+    transport.receive('host', { type: 'setHostPlaying', playing: false })
+    joinPhone('second', code)
+    joinPhone('third', code)
+
+    transport.receive('host', { type: 'setHostPlaying', playing: true })
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'table-full' })
+    // Refused as an action and nothing more: no terminal error, so the
+    // host keeps his catalogue, his switch and his START.
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('error')
+  })
+
+  it('refuses a manual page with nothing on preview as an action', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'manualPage', page: 1 })
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
+  })
+
+  /**
+   * The other direction, and the reason this is not simply "refusals are never
+   * terminal": a device that never established a session at this table has no
+   * action to refuse. The session is what is being refused, and the phone must
+   * stop rather than print a line and carry on as if it were seated.
+   */
+  it('still ends the session of a connection that never joined the table', () => {
+    openTable()
+    transport.connect('stranger')
+
+    transport.receive('stranger', { type: 'setHostPlaying', playing: true })
+
+    expect(transport.sentTo('stranger')).toContainEqual({ type: 'error', code: 'not-allowed' })
+  })
+
+  it('still ends the session of a phone that greets an unknown table', () => {
+    transport.connect('phone')
+    transport.receive('phone', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code: 'ZZZZ' })
+
+    expect(transport.sentTo('phone')).toContainEqual({ type: 'error', code: 'unknown-table' })
+  })
+})
+
+/**
+ * One device failing to receive is one device's problem. A broadcast reaches
+ * several connections in turn, so a send that throws part-way through would
+ * otherwise leave every device after it in the loop holding state from before
+ * the change — with no further message coming, because the server believes it
+ * already sent one. The television is usually first in that loop, which is the
+ * worst version of it: the room's shared source of truth stops moving while the
+ * table itself does not.
+ *
+ * The guard is deliberately only around the send. Building the message for a
+ * recipient stays outside it, so a domain bug in a projection still surfaces as
+ * a red test rather than being quietly swallowed for every recipient at once.
+ */
+describe('a broadcast to a connection that cannot receive', () => {
+  it('still reaches the other devices, and reports the fault', () => {
+    const screen = transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    const code = firstOfType('tv', 'tableReady').code
+
+    // The very object the session holds, broken after it was attached: the
+    // connection is live and belongs to the table, and only its delivery
+    // fails — the shape of a socket whose peer has gone without saying so.
+    screen.send = () => {
+      throw new Error('socket write failed')
+    }
+
+    transport.connect('host')
+    transport.receive('host', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+
+    expect(transport.sentTo('host').map((m) => m.type)).toContain('deviceState')
+    const fault = faults.find((candidate) => candidate.stage === 'sending')
+    expect(fault?.connectionId).toBe('tv')
+    expect(fault?.error.stack).toContain('socket write failed')
   })
 })

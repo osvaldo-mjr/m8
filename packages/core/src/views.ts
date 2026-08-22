@@ -15,10 +15,47 @@ export interface ParticipantView {
   readonly hasBaton: boolean
 }
 
+/** A seat's own occupant, resolved to the participant sitting in it rather
+ * than the bare id a `Seat` carries — the screen never has to look one up. */
+export interface SeatView {
+  readonly number: number
+  readonly occupant: ParticipantView | null
+}
+
 export interface TableView {
   readonly code: string
   readonly phase: TablePhase
   readonly participants: readonly ParticipantView[]
+  readonly seats: readonly SeatView[]
+  readonly chosenGameId: string | null
+  readonly preview: { readonly gameId: string; readonly page: number } | null
+  /**
+   * Whether the large screen should show the joining QR right now. Computed
+   * once, on the server, from the phase and the free-seat count — the
+   * television has no rule of its own to reimplement, which is what stops
+   * the two screens from ever disagreeing about it.
+   */
+  readonly qrVisible: boolean
+}
+
+/**
+ * What one phone is told: decisions, not data. There is no `code` and no
+ * `participants` here — a phone holds nothing of the table's, so a field
+ * that put the table back onto the device would be a regression this type
+ * exists to catch.
+ *
+ * `canStart` and `playersNeeded` are computed here rather than left for the
+ * device to derive from seat counts and a minimum, because a rule
+ * reimplemented on the device is a rule that can drift from the server's.
+ */
+export interface DeviceView {
+  readonly participantId: string
+  readonly phase: TablePhase
+  readonly seatNumber: number | null
+  readonly hasBaton: boolean
+  readonly canChooseGame: boolean
+  readonly canStart: boolean
+  readonly playersNeeded: number
 }
 
 /**
@@ -38,3 +75,4 @@ export type DomainError =
   | 'table-full'
   | 'not-allowed'
   | 'table-unavailable'
+  | 'stale-round'

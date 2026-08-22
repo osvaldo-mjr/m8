@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Colours are literal, not var(--m8-...): this file is fetched as an
+       image and renders outside the document, where custom properties do
+       not resolve. Values copied from packages/tokens/tokens.css. -->
+  <!-- box lid: --m8-table -->
+  <rect width="200" height="200" rx="16" fill="#945f35" />
+  <!-- grid lines: --m8-paper -->
+  <g stroke="#fff6ec" stroke-width="8" stroke-linecap="round">
+    <line x1="76" y1="36" x2="76" y2="164" />
+    <line x1="124" y1="36" x2="124" y2="164" />
+    <line x1="36" y1="76" x2="164" y2="76" />
+    <line x1="36" y1="124" x2="164" y2="124" />
+  </g>
+  <!-- X mark: --m8-person-1 -->
+  <g stroke="#ff5b4a" stroke-width="9" stroke-linecap="round">
+    <line x1="46" y1="46" x2="66" y2="66" />
+    <line x1="66" y1="46" x2="46" y2="66" />
+  </g>
+  <!-- O mark: --m8-person-8 -->
+  <circle cx="150" cy="100" r="14" fill="none" stroke="#4c8dff" stroke-width="9" />
+  <!-- X mark: --m8-person-1 -->
+  <g stroke="#ff5b4a" stroke-width="9" stroke-linecap="round">
+    <line x1="94" y1="144" x2="114" y2="164" />
+    <line x1="114" y1="144" x2="94" y2="164" />
+  </g>
+</svg>

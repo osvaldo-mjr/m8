@@ -2,6 +2,7 @@ import type { Server as HttpServer } from 'node:http'
 import type { ServerToClient } from '@m8/protocol'
 import type { Connection, Transport } from '@m8/transport'
 import { Server as SocketServer, type Socket } from 'socket.io'
+import { messageTypeOf, toError, type FaultReporter } from './faults.js'
 
 const CHANNEL = 'm8'
 
@@ -45,6 +46,17 @@ export interface TransportNegotiation {
 }
 
 /**
+ * Both callbacks are required rather than defaulted: an adapter constructed
+ * without a fault reporter is one whose failures go nowhere, which is the exact
+ * shape of the defect this pair exists to close. A test that genuinely does not
+ * care passes `() => {}` and says so.
+ */
+export interface SocketIoTransportOptions {
+  readonly onNegotiation: (negotiation: TransportNegotiation) => void
+  readonly onFault: FaultReporter
+}
+
+/**
  * The only file in the repository that knows Socket.IO exists. It owns the
  * `socket.io` Server too — constructed here from the bare `http.Server`,
  * rather than handed in already built — so that nothing else, not `app.ts`
@@ -57,14 +69,14 @@ export interface TransportNegotiation {
  */
 export class SocketIoTransport implements Transport {
   readonly #io: SocketServer
+  readonly #onFault: FaultReporter
   #onConnect: (connection: Connection) => void = () => {}
   #onMessage: (connection: Connection, raw: unknown) => void = () => {}
   #onDisconnect: (connection: Connection) => void = () => {}
 
-  constructor(
-    httpServer: HttpServer,
-    onNegotiation: (negotiation: TransportNegotiation) => void = () => {},
-  ) {
+  constructor(httpServer: HttpServer, options: SocketIoTransportOptions) {
+    const { onNegotiation, onFault } = options
+    this.#onFault = onFault
     this.#io = new SocketServer(httpServer, {
       serveClient: false,
       pingInterval: HEARTBEAT.pingInterval,
@@ -86,7 +98,7 @@ export class SocketIoTransport implements Transport {
 
       const connection = this.#wrap(socket)
       this.#onConnect(connection)
-      socket.on(CHANNEL, (raw: unknown) => this.#onMessage(connection, raw))
+      socket.on(CHANNEL, (raw: unknown) => this.#deliver(connection, raw))
       socket.on('disconnect', () => this.#onDisconnect(connection))
     })
   }
@@ -110,6 +122,68 @@ export class SocketIoTransport implements Transport {
    */
   async close(): Promise<void> {
     await this.#io.close()
+  }
+
+  /**
+   * The one boundary between "a table broke" and "the server died".
+   *
+   * A synchronous throw inside this listener is not contained by Socket.IO.
+   * It is caught by `Client#ondata`, routed to `Client#onerror` and re-emitted
+   * as the socket's `'error'` event; nothing registers a listener for that, so
+   * Node's `EventEmitter` rethrows it from inside that same catch block, where
+   * nothing can catch it again. No `process.on('uncaughtException')` exists in
+   * this app, so the process goes down — taking every other table on the
+   * instance and all of their state with it, because in-memory state is all
+   * the state there is. One malformed message from one phone in one living
+   * room would end every other session on the server. Verified empirically
+   * against the installed `socket.io`, not reasoned about.
+   *
+   * The catch belongs here, in the one file that knows Socket.IO exists
+   * (invariant 9), and nowhere above it: `packages/transport`'s fake drives
+   * the whole test suite, so a catch on the domain side would make every
+   * `expect(...).not.toThrow()` in it vacuous and stop domain bugs surfacing
+   * as red tests.
+   *
+   * Never silent. By the time a translation throws, the domain mutation has
+   * usually already landed: the table's real state has moved while every
+   * device still holds the state from before it, and no further message is
+   * coming. So the fault is reported with its stack for whoever reads the log,
+   * and the one device whose message it was is told the message did not land.
+   * Only that device — the others are not party to it, and their own state is
+   * repaired by the next broadcast either way.
+   */
+  #deliver(connection: Connection, raw: unknown): void {
+    try {
+      this.#onMessage(connection, raw)
+    } catch (thrown) {
+      this.#onFault({
+        connectionId: connection.id,
+        stage: 'handling',
+        messageType: messageTypeOf(raw),
+        error: toError(thrown),
+      })
+      this.#reply(connection, { type: 'error', code: 'invalid-message' })
+    }
+  }
+
+  /**
+   * The answer to a fault, sent with a guard of its own. Nothing here may
+   * throw: this runs inside the catch block above, and a throw from it would
+   * escape to exactly the place the catch exists to keep clear. The reasoning
+   * that made this catch necessary — do not assume the library contains what
+   * it does not — applies to the reply as much as to the handling.
+   */
+  #reply(connection: Connection, message: ServerToClient): void {
+    try {
+      connection.send(message)
+    } catch (thrown) {
+      this.#onFault({
+        connectionId: connection.id,
+        stage: 'sending',
+        messageType: message.type,
+        error: toError(thrown),
+      })
+    }
   }
 
   #wrap(socket: Socket): Connection {

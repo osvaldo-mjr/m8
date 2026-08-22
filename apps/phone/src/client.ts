@@ -17,6 +17,54 @@ export function tokenStorageKey(code: string): string {
   return `${TOKEN_KEY_PREFIX}${code}`
 }
 
+const PROFILE_KEY_PREFIX = 'm8.participant.profile.'
+
+/**
+ * Where this device's own name and face for one table are kept.
+ *
+ * The wire never echoes a nickname or an avatar back to the phone that chose
+ * them — `DeviceSnapshot` carries decisions, not data — so this is the only
+ * place either survives a reload. Without it, a page that reloads mid-session
+ * (a phone whose browser reclaimed the tab while it sat in a pocket) would
+ * ask a person to introduce themselves twice: the server already knows their
+ * profile, but the screen would have no way to know that and would show the
+ * form again. Keyed by table code for the same reason the token is.
+ */
+export function profileStorageKey(code: string): string {
+  return `${PROFILE_KEY_PREFIX}${code}`
+}
+
+export interface StoredProfile {
+  readonly nickname: string
+  readonly avatarId: string
+}
+
+/**
+ * Reads whatever profile was last remembered for `code`, tolerating anything
+ * that is not the shape this module itself writes: corrupted storage, a
+ * browser extension's stray value, an older format from a previous release.
+ * All of those are read the same as never having a profile at all, which is
+ * always a safe fallback — the phone simply asks again.
+ */
+function readStoredProfile(code: string): StoredProfile | null {
+  const raw = window.localStorage.getItem(profileStorageKey(code))
+  if (raw === null) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      typeof (parsed as { nickname?: unknown }).nickname !== 'string' ||
+      typeof (parsed as { avatarId?: unknown }).avatarId !== 'string'
+    ) {
+      return null
+    }
+    return { nickname: (parsed as StoredProfile).nickname, avatarId: (parsed as StoredProfile).avatarId }
+  } catch {
+    return null
+  }
+}
+
 /**
  * The QR carries the whole destination, so the code arrives in the path.
  *
@@ -66,6 +114,14 @@ export interface PhoneClient {
    * participant for this device.
    */
   disconnect(): void
+  /**
+   * This device's own name and face, remembered from an earlier session at
+   * this table — `null` the first time this device ever joins it. Read once,
+   * synchronously, at connect time: it does not depend on the server
+   * answering anything, so there is no reason to make the caller wait for a
+   * round trip before it can decide whether to show the profile form.
+   */
+  readonly storedProfile: StoredProfile | null
 }
 
 export function connectPhone(
@@ -95,7 +151,21 @@ export function connectPhone(
   })
 
   return {
-    send: (message) => socket.emit(CHANNEL, message),
+    send: (message) => {
+      // The only message this module has any reason to remember: it is the
+      // one message whose whole content the wire never sends back. Written
+      // at send time, not on some later acknowledgement — the server has no
+      // refusal path for a profile from an attachment that could reach the
+      // profile screen at all, so waiting for one would only add a window in
+      // which a reload asks the same question again for nothing.
+      if (message.type === 'setProfile') {
+        window.localStorage.setItem(
+          profileStorageKey(code),
+          JSON.stringify({ nickname: message.nickname, avatarId: message.avatarId }),
+        )
+      }
+      socket.emit(CHANNEL, message)
+    },
     disconnect: () => {
       // Set before closing, not after: a message already in flight when
       // disconnect() is called must still be dropped by the handler above
@@ -103,5 +173,6 @@ export function connectPhone(
       closed = true
       socket.disconnect()
     },
+    storedProfile: readStoredProfile(code),
   }
 }

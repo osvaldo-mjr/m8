@@ -166,7 +166,16 @@ export interface ManualPage {
  */
 export const MANUAL_PAGE_MAX_WORDS = 60
 
-/** The table's hard capacity, independent of any game. */
+/**
+ * The table's hard capacity, independent of any game.
+ *
+ * This is the same number as `MAX_PARTICIPANTS` in `@m8/core`, written twice
+ * on purpose: a manifest must be checkable without pulling the domain in, and
+ * the domain must bound a table without knowing games exist. The repository
+ * already does this for `NICKNAME_MAX_LENGTH`, and handles it the same way —
+ * `apps/server/src/limits.test.ts`, the one place that sees both packages,
+ * fails if the two ever disagree.
+ */
 export const MAX_SEATS = 8
 
 /**
@@ -241,19 +250,29 @@ export {
 export type { GameManifest, Locale, ManualPage } from './manifest.js'
 ```
 
-- [ ] **Step 5: Wire the package into the toolchain**
+- [ ] **Step 5: Pin the duplicated constant**
+
+Add to `apps/server/src/limits.test.ts`, beside the nickname case it already holds:
+
+```ts
+it('bounds a table at the same number in the contract and in the domain', () => {
+  expect(MAX_SEATS).toBe(MAX_PARTICIPANTS)
+})
+```
+
+- [ ] **Step 6: Wire the package into the toolchain**
 
 Add to `tsconfig.json` `paths`: `"@m8/contract": ["./packages/contract/src/index.ts"]`.
 
 Add to `vitest.config.ts` `resolve.alias`, keeping the more specific `@m8/protocol/validate` entry first: `'@m8/contract': fileURLToPath(new URL('./packages/contract/src/index.ts', import.meta.url))`.
 
-- [ ] **Step 6: Run the tests and confirm they pass**
+- [ ] **Step 7: Run the tests and confirm they pass**
 
 Run through PowerShell: `npm test`
 
-Expected: PASS, the existing suite plus 9 new tests.
+Expected: PASS, the existing suite plus 10 new tests.
 
-- [ ] **Step 7: Confirm the workspace guard still passes**
+- [ ] **Step 8: Confirm the workspace guard still passes**
 
 Run: `npx vitest run scripts/dockerfile-manifests.test.ts`
 
@@ -261,10 +280,10 @@ Expected: FAIL — the guard derives the workspace list from `package.json` and 
 
 This is the guard doing its job; it was written for exactly this moment.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add packages/contract tsconfig.json vitest.config.ts Dockerfile package-lock.json
+git add packages/contract apps/server/src/limits.test.ts tsconfig.json vitest.config.ts Dockerfile package-lock.json
 git commit -m "Add the game manifest, with a guard on manual length
 
 A page a room cannot read from three metres fails the only job a manual
@@ -280,7 +299,7 @@ has, so the word limit is asserted rather than advised."
 - Create: `packages/games/chess/`, `packages/games/draughts/`, `packages/games/dominoes/` (manifest and cover only, each `coming-soon`)
 - Create: `apps/server/src/catalogue.ts`
 - Test: `apps/server/src/catalogue.test.ts`
-- Modify: `apps/server/src/app.ts`, `apps/server/package.json`, `tsconfig.json`, `vitest.config.ts`
+- Modify: `apps/server/src/app.ts`, `apps/server/package.json`, `tsconfig.json`, `vitest.config.ts`, `Dockerfile` (four more workspace manifests, and the assets they serve)
 
 **Interfaces:**
 - Consumes: `GameManifest`, `manifestFaults`, `Locale` from `@m8/contract`.
@@ -544,28 +563,31 @@ choosing not to show something it was given."
 Add to `packages/core/src/table-registry.test.ts`:
 
 ```ts
+// `newTable` and `makeRegistry` already exist at the top of this file:
+// `openTable` can refuse, and unwrapping that refusal is what the helper is
+// for. Use them; do not add a second way to obtain a table.
 describe('the round marker', () => {
   it('starts at one', () => {
     const registry = makeRegistry()
-    expect(registry.createTable().round).toBe(1)
+    expect(newTable(registry).round).toBe(1)
   })
 
   it('admits a phone presenting the current round', () => {
     const registry = makeRegistry()
-    const table = registry.createTable()
+    const table = newTable(registry)
     const result = registry.joinParticipant(table.code, undefined, table.round)
     expect('error' in result).toBe(false)
   })
 
   it('refuses a phone presenting a stale round', () => {
     const registry = makeRegistry()
-    const table = registry.createTable()
+    const table = newTable(registry)
     expect(registry.joinParticipant(table.code, undefined, 0)).toEqual({ error: 'stale-round' })
   })
 
   it('admits a phone presenting no round at all, which is a deliberate arrival', () => {
     const registry = makeRegistry()
-    const table = registry.createTable()
+    const table = newTable(registry)
     const result = registry.joinParticipant(table.code, undefined, undefined)
     expect('error' in result).toBe(false)
   })
@@ -604,6 +626,8 @@ export type TablePhase =
 ```
 
 In `packages/core/src/views.ts`, add `'stale-round'` to `DomainError`. The `Record<DomainError, ErrorCode>` in `apps/server/src/translate.ts` will fail to compile until it is updated — which is the exhaustiveness guard working, and the reason it exists.
+
+That update needs a matching `'stale-round'` member on `ErrorCode` in `packages/protocol/src/messages.ts`. Add **only** that one member here. Every other protocol change — the new messages, the new snapshots, the version bump — belongs to Task 6, and adding any of it now would leave Task 6 editing a file it did not expect to find half-changed.
 
 - [ ] **Step 4: Check the round on arrival**
 
@@ -650,7 +674,9 @@ permanent way around the rule."
 
 **Interfaces:**
 - Consumes: `GameManifest` from `@m8/contract`, `Participant` from `./table.js`.
-- Produces: `interface Seat { readonly number: number; readonly occupantId: string | null }`; `createSeats(max: number): Seat[]`; `firstFreeSeat(seats): Seat | undefined`; `seatOf(seats, participantId): Seat | undefined`; `occupiedCount(seats): number`; `canStart(seats, min): boolean`. `TableRegistry` gains `chooseGame(code, participantId, gameId, manifest)`, `setHostPlaying(code, participantId, playing)`.
+- Produces: `interface Seat { readonly number: number; readonly occupantId: string | null }`; `createSeats(max: number): Seat[]`; `firstFreeSeat(seats): Seat | undefined`; `seatOf(seats, participantId): Seat | undefined`; `occupiedCount(seats): number`; `canStart(seats, min): boolean`. `Table` gains `readonly seats: readonly Seat[]`, empty until a game is chosen. `TableRegistry` gains `chooseGame(code, participantId, gameId, seats: { min: number; max: number }): { error: DomainError } | undefined` and `setHostPlaying(code, participantId, playing: boolean): { error: DomainError } | undefined`.
+
+`chooseGame` takes the seat range as a plain pair of numbers, not a `GameManifest`. `packages/core` must not import `@m8/contract`: a manifest is a game describing itself, and invariant 1 says the platform never knows what a game is. The server reads the manifest and passes core the two numbers it is entitled to know.
 
 - [ ] **Step 1: Write the failing test for the seat helpers**
 
@@ -781,7 +807,7 @@ const TIC_TAC_TOE = { min: 2, max: 2 }
 describe('choosing a game', () => {
   it('is refused for anyone without the baton', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     const other = join(registry, code)
     expect(registry.chooseGame(code, other.id, 'tic-tac-toe', TIC_TAC_TOE)).toEqual({
@@ -791,7 +817,7 @@ describe('choosing a game', () => {
 
   it('creates the game maximum in seats and moves to seating', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     const table = registry.getTable(code)!
@@ -801,7 +827,7 @@ describe('choosing a game', () => {
 
   it('seats the host, because wanting to play is the common case', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     expect(registry.getTable(code)!.seats[0]?.occupantId).toBe(host.id)
@@ -811,7 +837,7 @@ describe('choosing a game', () => {
 describe('the host stepping out', () => {
   it('frees the seat', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     registry.setHostPlaying(code, host.id, false)
@@ -820,7 +846,7 @@ describe('the host stepping out', () => {
 
   it('lets him sit again while a seat is free', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     registry.setHostPlaying(code, host.id, false)
@@ -830,7 +856,7 @@ describe('the host stepping out', () => {
 
   it('refuses to seat him when the table is full', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     registry.setHostPlaying(code, host.id, false)
@@ -843,14 +869,14 @@ describe('the host stepping out', () => {
 describe('joining once a game is chosen', () => {
   it('is refused before a game is chosen', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     join(registry, code)
     expect(registry.joinParticipant(code, undefined, undefined)).toEqual({ error: 'not-allowed' })
   })
 
   it('claims a seat on arrival, before any nickname is set', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     const second = join(registry, code)
@@ -860,7 +886,7 @@ describe('joining once a game is chosen', () => {
 
   it('refuses arrival number three at a two-seat table', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     join(registry, code)
@@ -869,7 +895,7 @@ describe('joining once a game is chosen', () => {
 })
 ```
 
-Add a `join` helper beside `makeRegistry` that calls `joinParticipant` and throws on an error result, so each test reads as the scene it describes.
+Add a `join(registry, code)` helper beside the existing `newTable`, calling `joinParticipant(code, undefined, undefined)` and throwing on an error result, so each test reads as the scene it describes. `newTable` and `makeRegistry` are already there — use them rather than adding a second way to obtain a table.
 
 - [ ] **Step 5: Implement `chooseGame`, `setHostPlaying`, and seat claiming on arrival**
 
@@ -908,20 +934,36 @@ for the last chair and one discover the loss on pressing confirm."
 
 ```ts
 describe('the device view', () => {
-  it('tells the baton holder he may choose a game, and nobody else', () => {
+  it('tells the baton holder he may choose a game', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    const table = registry.getTable(code)!
+    expect(registry.deviceView(table, host.id).canChooseGame).toBe(true)
+  })
+
+  it('stops offering the choice once a game is chosen', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const table = registry.getTable(code)!
+    expect(registry.deviceView(table, host.id).canChooseGame).toBe(false)
+  })
+
+  it('never offers the choice to anyone without the baton', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     const other = join(registry, code)
     const table = registry.getTable(code)!
-    expect(registry.deviceView(table, host.id).canChooseGame).toBe(true)
     expect(registry.deviceView(table, other.id).canChooseGame).toBe(false)
   })
 
   it('says how many more players are needed rather than the arithmetic', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     const table = registry.getTable(code)!
@@ -933,7 +975,7 @@ describe('the device view', () => {
 
   it('carries nothing about the table', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     const host = join(registry, code)
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     const view = registry.deviceView(registry.getTable(code)!, host.id)
@@ -952,7 +994,7 @@ describe('the device view', () => {
 describe('the table view', () => {
   it('shows the QR exactly while someone may join', () => {
     const registry = makeRegistry()
-    const code = registry.createTable().code
+    const code = newTable(registry).code
     expect(registry.snapshot(registry.getTable(code)!).qrVisible).toBe(true)
 
     const host = join(registry, code)
@@ -981,13 +1023,17 @@ Expected: FAIL — `deviceView` is not a function, `qrVisible` is undefined.
 
 `DeviceView` carries decisions rather than data: `canStart` and `playersNeeded` rather than seat counts and minimums. `qrVisible` is computed from the phase and the free-seat count in one place, so the rule cannot drift between the screen and the server.
 
+`canChooseGame` is `hasBaton && chosenGameId === null`, not `hasBaton` alone. The design has no path for changing the game mid-seating — a host who wants a different game ends the round and everyone rescans — and Task 4's `chooseGame` guard already refuses a second choice. A device state that offers an action the server will reject is the exact failure this split exists to prevent, so the second test above, the one asserting it goes false, is the one that pins the rule.
+
 - [ ] **Step 4: Delete the domain events**
 
 Remove `packages/core/src/events.ts` and its export. Remove `#applyEvents` and its four call sites from `apps/server/src/session.ts`. Every registry method that returned `DomainEvent[]` now returns nothing or a result value.
 
 Amend architectural invariant 8 in `CLAUDE.md` to describe what actually holds:
 
-> 8. **`packages/core` performs no I/O.** No Fastify, no Socket.IO, no timers, no clock reads. It owns its own vocabulary — `TableView`, `DeviceView`, `DomainError` — and `apps/server` translates that to wire messages. It emits no events: a seam that carried nothing for two milestones was a claim, not a boundary.
+> 8. **`packages/core` performs no I/O.** No Fastify, no Socket.IO, no timers, no clock of its own — time enters only as an injected `Clock` dependency, never read from the system directly. It owns its own vocabulary — `TableView`, `DeviceView`, `DomainError` — and `apps/server` translates that to wire messages. It emits no events: a seam that carried nothing for two milestones was a claim, not a boundary.
+
+The qualifier is load-bearing. `TableRegistry` does call `this.#clock.now()`, twice — a flat "no clock reads" would be false against the file this task edits, and a working agreement that asserts a guarantee the code does not provide is the defect this repository keeps finding.
 
 - [ ] **Step 5: Run the tests and confirm they pass**
 
@@ -1207,6 +1253,8 @@ Cover: the cover image `src` is the URL the snapshot carries; the page's title a
 One more, because it is the constraint most easily lost: a page whose lines are long must not push the notebook past the table's edge. Assert the wrapping container has a fixed width and `overflow: hidden`, so a manual that slips past the word guard degrades to clipped text rather than to a broken table.
 
 The screen picks its language with a single exported constant, `SCREEN_LOCALE = 'pt-BR'`, read from the snapshot's `Record<Locale, …>` fields. That constant is the whole surface a language switch will later touch.
+
+The wire now carries seven phases and this plan draws three of them — awaiting-host, choosing-game and seating. Nothing here can start a match, so `playing`, `paused`, `awaiting-seat` and `finished` are unreachable. Route them to the existing waiting screen and pin that with a test naming all four. A `switch` that silently renders nothing would show a blank television, which is the one failure the target cannot be debugged through; Plan 2b replaces the fallback screen by screen.
 
 - [ ] **Step 2: Run and confirm it fails**
 

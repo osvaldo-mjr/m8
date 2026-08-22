@@ -14,6 +14,10 @@ function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean'
+}
+
 /**
  * Hand-written on purpose: this file is imported by the server only, so no
  * validation library reaches the TV bundle, where every kilobyte is budgeted.
@@ -37,9 +41,16 @@ export function parseInbound(raw: unknown): Inbound | null {
       if (!isNumber(raw['protocolVersion']) || !isString(raw['code'])) return null
       const token = raw['token']
       if (token !== undefined && !isString(token)) return null
-      return token === undefined
-        ? { type: 'hello', protocolVersion: raw['protocolVersion'], code: raw['code'] }
-        : { type: 'hello', protocolVersion: raw['protocolVersion'], code: raw['code'], token }
+      const round = raw['round']
+      if (round !== undefined && !isNumber(round)) return null
+
+      const { protocolVersion, code } = raw
+      if (token !== undefined && round !== undefined) {
+        return { type: 'hello', protocolVersion, code, token, round }
+      }
+      if (token !== undefined) return { type: 'hello', protocolVersion, code, token }
+      if (round !== undefined) return { type: 'hello', protocolVersion, code, round }
+      return { type: 'hello', protocolVersion, code }
     }
 
     case 'setProfile': {
@@ -49,6 +60,33 @@ export function parseInbound(raw: unknown): Inbound | null {
 
     case 'leave':
       return { type: 'leave' }
+
+    case 'previewGame': {
+      if (!isString(raw['gameId'])) return null
+      return { type: 'previewGame', gameId: raw['gameId'] }
+    }
+
+    case 'manualPage': {
+      // The range is not checked here — a page arrow held down is exactly
+      // what produces a value past either end, and the server clamps that
+      // rather than the wire refusing it (see apps/server/src/translate.ts:
+      // clampPage). But the *type* is: nobody holding an arrow produces a
+      // fraction, so a non-integer is a malformed message, not a user
+      // action, and is refused the same as a non-number.
+      const page = raw['page']
+      if (!isNumber(page) || !Number.isInteger(page)) return null
+      return { type: 'manualPage', page }
+    }
+
+    case 'chooseGame': {
+      if (!isString(raw['gameId'])) return null
+      return { type: 'chooseGame', gameId: raw['gameId'] }
+    }
+
+    case 'setHostPlaying': {
+      if (!isBoolean(raw['playing'])) return null
+      return { type: 'setHostPlaying', playing: raw['playing'] }
+    }
 
     default:
       return null

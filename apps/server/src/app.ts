@@ -3,7 +3,9 @@ import fastifyStatic from '@fastify/static'
 import Fastify, { type FastifyInstance } from 'fastify'
 import QRCode from 'qrcode'
 import { TableRegistry, createRng, normalizeTableCode } from '@m8/core'
+import { CATALOGUE, GAME_ASSET_ROOTS, catalogueForPhone } from './catalogue.js'
 import { SystemClock } from './clock.js'
+import type { FaultReporter } from './faults.js'
 import { SocketIoTransport } from './socket-transport.js'
 import { Session } from './session.js'
 
@@ -70,6 +72,24 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       .send(svg)
   })
 
+  for (const [id, root] of GAME_ASSET_ROOTS) {
+    // One registration per game, each rooted in that game's own package, so a
+    // game's artwork travels with the game rather than being copied into the
+    // server's tree at build time.
+    await app.register(fastifyStatic, {
+      root,
+      prefix: `/covers/${id}/`,
+      decorateReply: false,
+    })
+  }
+
+  app.get('/api/games', async (_request, reply) => {
+    // Platform content, identical for every table and cacheable — not table
+    // state. Bundling it into the phone would make adding a game a phone
+    // release.
+    return reply.header('cache-control', 'public, max-age=60').send(catalogueForPhone(CATALOGUE))
+  })
+
   // Not a route: `@fastify/static`'s wildcard is registered at `/`, and
   // find-my-way ranks a parametric route (`/:code`) above that wildcard, so
   // a literal `/:code` route here would capture every single-segment path —
@@ -89,10 +109,30 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // Socket.IO answers its own requests before Fastify's router, so nothing
   // else in the log reveals whether a device is on WebSocket or fell back to
   // long polling. The television smoke test asks the operator for exactly that.
-  const transport = new SocketIoTransport(app.server, (negotiation) => {
-    app.log.info(negotiation, 'socket transport negotiated')
+  // A fault is the one thing neither the transport nor the session can answer
+  // for on its own: something threw where nothing above it could catch, so the
+  // device is told its message did not land and this is the only record of why.
+  // Logged with the error under `err` so Fastify's serializer writes the full
+  // stack — a fault line without one names a failure nobody can find.
+  const reportFault: FaultReporter = (fault) => {
+    app.log.error(
+      {
+        err: fault.error,
+        connectionId: fault.connectionId,
+        stage: fault.stage,
+        messageType: fault.messageType,
+      },
+      'connection fault',
+    )
+  }
+
+  const transport = new SocketIoTransport(app.server, {
+    onNegotiation: (negotiation) => {
+      app.log.info(negotiation, 'socket transport negotiated')
+    },
+    onFault: reportFault,
   })
-  new Session(transport, registry)
+  new Session(transport, registry, reportFault)
 
   // Fastify's own server-closing hook is registered internally at `preReady`
   // and hooks run last-registered-first, so an `onClose` hook added here

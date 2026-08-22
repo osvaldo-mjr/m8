@@ -6,7 +6,12 @@
   "main": "src/main.ts",
   "dependencies": {
     "@fastify/static": "^10.1.3",
+    "@m8/contract": "*",
     "@m8/core": "*",
+    "@m8/game-chess": "*",
+    "@m8/game-dominoes": "*",
+    "@m8/game-draughts": "*",
+    "@m8/game-tic-tac-toe": "*",
     "@m8/protocol": "*",
     "@m8/transport": "*",
     "fastify": "^5.12.1",

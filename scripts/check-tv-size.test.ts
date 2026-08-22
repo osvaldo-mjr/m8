@@ -7,10 +7,13 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * The ceiling lives in `budget.json` and is read by name from
- * `check-tv-size.mjs`. Two files, no compiler between them: a rename that
- * touched one of them would read `undefined`, compare `NaN` against the
- * total, find it not greater, and pass every bundle from then on. The guard
- * refuses a budget it cannot read, and this is what would notice.
+ * `check-tv-size.mjs`. `budget.json` also holds `gameAssetRawBytes`, the
+ * independent per-game asset ceiling `check-game-assets.mjs` reads (see
+ * `check-game-assets.test.ts`) — the two keys are declared side by side but
+ * checked separately, so a rename that touched one guard's key would read
+ * `undefined`, compare `NaN` against its total, find it not greater, and
+ * pass every bundle from then on. The guard refuses a budget it cannot read,
+ * and this is what would notice.
  */
 describe('the declared budget', () => {
   const repoRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -19,18 +22,26 @@ describe('the declared budget', () => {
     unknown
   >
   const guardSource = readFileSync(join(repoRoot, 'scripts', 'check-tv-size.mjs'), 'utf8')
+  const BUDGET_KEY = 'tvBundleTransferBytes'
 
-  it('declares exactly one ceiling', () => {
-    expect(Object.keys(budget)).toHaveLength(1)
+  // This is the one assertion in the whole suite that would catch a third
+  // key arriving in `budget.json` with no guard reading it — a budget file
+  // growing an unenforced key looks like protection and is not, and that is
+  // exactly the failure this task exists to prevent. Deliberately a literal,
+  // hardcoded list rather than something derived from the guard scripts on
+  // disk: deriving it would let a new key that no guard reads slip through
+  // silently, which is the one thing this test must not do. A new key is
+  // meant to break this line and force a deliberate update here.
+  it('declares no keys beyond the ones the guards read', () => {
+    expect(Object.keys(budget).sort()).toEqual(['gameAssetRawBytes', 'tvBundleTransferBytes'])
   })
 
   it('declares it under the key the guard reads', () => {
-    const key = Object.keys(budget)[0] as string
-    expect(guardSource).toContain(`const BUDGET_KEY = '${key}'`)
+    expect(guardSource).toContain(`const BUDGET_KEY = '${BUDGET_KEY}'`)
   })
 
   it('declares it as a positive whole number of bytes', () => {
-    const value = Object.values(budget)[0]
+    const value = budget[BUDGET_KEY]
     expect(Number.isInteger(value)).toBe(true)
     expect(value as number).toBeGreaterThan(0)
   })

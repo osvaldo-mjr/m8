@@ -6,7 +6,12 @@ export default defineConfig({
     alias: {
       '@m8/protocol/validate': fileURLToPath(new URL('./packages/protocol/src/validate.ts', import.meta.url)),
       '@m8/avatars': fileURLToPath(new URL('./packages/avatars/src/index.ts', import.meta.url)),
+      '@m8/contract': fileURLToPath(new URL('./packages/contract/src/index.ts', import.meta.url)),
       '@m8/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
+      '@m8/game-chess': fileURLToPath(new URL('./packages/games/chess/src/index.ts', import.meta.url)),
+      '@m8/game-dominoes': fileURLToPath(new URL('./packages/games/dominoes/src/index.ts', import.meta.url)),
+      '@m8/game-draughts': fileURLToPath(new URL('./packages/games/draughts/src/index.ts', import.meta.url)),
+      '@m8/game-tic-tac-toe': fileURLToPath(new URL('./packages/games/tic-tac-toe/src/index.ts', import.meta.url)),
       '@m8/protocol': fileURLToPath(new URL('./packages/protocol/src/index.ts', import.meta.url)),
       '@m8/tokens': fileURLToPath(new URL('./packages/tokens/src/index.ts', import.meta.url)),
       '@m8/transport': fileURLToPath(new URL('./packages/transport/src/index.ts', import.meta.url)),

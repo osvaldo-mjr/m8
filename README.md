@@ -20,20 +20,31 @@ it. Turns hide latency and let the big screen be the source of truth.
 Milestone 1, in progress. **There is no playable game yet.** What exists today
 is the foundation a game will run on: a table opens on the local network, the
 large screen shows a table code and a QR code, and a phone that scans it joins
-and appears on the screen with a name and an avatar. That is the whole slice —
-no seats, no turns, no rules.
+and appears on the screen with a name and an avatar. From there the host
+browses a catalogue of games on his own phone, puts one on the television — its
+box and its manual, turned a page at a time from his hand — and chooses it,
+which sizes the table's seats from that game's manifest and opens them to
+whoever scans the code next. What is missing is the match: no game has rules
+behind it yet, so nothing starts.
 
-617 tests cover it: pure domain logic, a table state machine driven by a fake
-transport, integration tests proving the real Socket.IO transport honours the
-same contract, and a set of guards over the build itself. Three of those run on
-every push — one confirms the large-screen bundle compiles to syntax the old
-television targets can execute, one scans the emitted stylesheet and rejects
-CSS newer than those sets can run, and the third holds everything the
-television downloads under a 42,000-byte budget, currently measured at 39,399
-bytes (code and stylesheet gzipped, the two self-hosted font files as they are
-served). The Docker image is built in CI and then started, and a request is
-made against it, so the clone-and-run promise is checked on a machine with
-nothing installed rather than assumed.
+Tests cover it at four levels: pure domain logic, a table state machine driven
+by a fake transport, integration tests proving the real Socket.IO transport
+honours the same contract the fake one fakes, and guards over the build itself.
+`npm test` prints the count; this file does not repeat it, because nothing
+here could keep it true.
+
+Each guard runs on every push, and fails the build rather than warning:
+`guard:syntax` confirms the large-screen bundle compiles to syntax the old
+television targets can execute; `guard:css` scans the emitted stylesheet and
+rejects CSS newer than those sets can run; `guard:size` holds everything the
+television downloads — code and stylesheet gzipped, the two self-hosted font
+files as they are served — under a 42,000-byte budget; and `guard:assets`
+holds each game's own artwork under a budget of its own, so no game can spend
+the television's on a cover nobody asked for. Both budgets live in
+`budget.json`, and `npm run guards` prints what each one currently weighs. The
+Docker image is built in CI and then started, and a request is made against
+it, so the clone-and-run promise is checked on a machine with nothing
+installed rather than assumed.
 
 ## Architecture
 
@@ -76,6 +87,8 @@ npm test
 | Path | Responsibility |
 |---|---|
 | `packages/core` | The domain. No I/O of any kind. |
+| `packages/contract` | What a game declares about itself, and nothing more. |
+| `packages/games/*` | One workspace per game: its manifest, its artwork, later its rules. |
 | `packages/protocol` | Wire messages. Types only for the browser. |
 | `packages/avatars` | The fixed avatar catalogue, read by both screens. |
 | `packages/transport` | The `Transport` seam, plus an in-memory fake. |
@@ -83,3 +96,10 @@ npm test
 | `apps/server` | Wiring: Fastify, Socket.IO, QR. |
 | `apps/tv` | The large screen. Vanilla TypeScript, ES2017. |
 | `apps/phone` | The phone. React. |
+
+A game is a workspace, not a branch in the platform. `packages/contract` is
+the whole of what the platform may know about one — enough to list it, present
+it and size its table — so adding a game is adding a directory beside the
+others and one line in the server's catalogue. Nothing in `packages/core` or
+`apps/server` ever compares a game id, which is the invariant that boundary
+exists to make true.

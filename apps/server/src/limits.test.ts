@@ -1,4 +1,8 @@
-import { NICKNAME_MAX_LENGTH as DOMAIN_LIMIT } from '@m8/core'
+import type { GameManifest, Locale as ContractLocale } from '@m8/contract'
+import { MAX_SEATS } from '@m8/contract'
+import type { TablePhase } from '@m8/core'
+import { MAX_PARTICIPANTS, NICKNAME_MAX_LENGTH as DOMAIN_LIMIT } from '@m8/core'
+import type { GameStatus, Locale as WireLocale, TablePhaseName } from '@m8/protocol'
 import { NICKNAME_MAX_LENGTH as WIRE_LIMIT } from '@m8/protocol'
 import { describe, expect, it } from 'vitest'
 
@@ -26,5 +30,67 @@ describe('the nickname limit', () => {
     // Guards the guard: two constants that were both undefined, or both
     // zero, would satisfy the equality above and break every nickname.
     expect(DOMAIN_LIMIT).toBeGreaterThan(0)
+  })
+
+  it('bounds a table at the same number in the contract and in the domain', () => {
+    expect(MAX_SEATS).toBe(MAX_PARTICIPANTS)
+  })
+})
+
+/**
+ * `TablePhaseName` and `Locale` exist twice for the same reason the nickname
+ * limit does: `@m8/protocol` must not import `@m8/core` or `@m8/contract`, so
+ * it carries its own copies of their unions, written out rather than
+ * imported. This file is the one place that legitimately sees all three
+ * packages, so it is where the copies are proved to still agree.
+ *
+ * A type-level assertion, not a runtime one: two unions can only be compared
+ * for their exact membership by the type checker, and a runtime check here
+ * could pass on the very data that revealed a divergence. Naive distributive
+ * comparisons such as `A extends B ? (B extends A ? true : never) : never`
+ * do not actually work for this — they resolve to `boolean` regardless of
+ * whether the unions agree, so a broken check like that would report
+ * agreement even after a real drift. `IfEquals` is the standard
+ * function-type trick that side-steps distribution and genuinely tells two
+ * unions apart; a mismatch resolves `Y` to `false`, which fails
+ * `expect(...).toBe(true)` below, and every combination here has been
+ * verified by hand against a deliberately mismatched pair before being
+ * trusted.
+ */
+type IfEquals<T, U, Y = true, N = false> = (<G>() => G extends T ? 1 : 2) extends (
+  <G>() => G extends U ? 1 : 2
+)
+  ? Y
+  : N
+
+describe('the wire and the domain agree on their shared vocabulary', () => {
+  it('names the same locales', () => {
+    const localesAgree: IfEquals<WireLocale, ContractLocale> = true
+    expect(localesAgree).toBe(true)
+  })
+
+  it('names the same table phases', () => {
+    const phasesAgree: IfEquals<TablePhaseName, TablePhase> = true
+    expect(phasesAgree).toBe(true)
+  })
+
+  /**
+   * The third of these, and the one that was missing.
+   *
+   * `GET /api/games` publishes a game's status to the phone, and the value
+   * comes straight off a manifest. The phone must not import `@m8/contract` to
+   * read one word, so the wire writes the union out — the same trade as
+   * `Locale` and `TablePhaseName`, and it earns the same guard here rather
+   * than a comment claiming one.
+   *
+   * The entry's *shape* needs no check of its own any more: the phone and the
+   * server both import `PhoneCatalogueEntry` from `@m8/protocol` rather than
+   * declaring it twice, so a field dropped or renamed stops compiling on both
+   * sides at once. Only this union, which genuinely exists twice, needs
+   * binding.
+   */
+  it('names the same game statuses', () => {
+    const statusesAgree: IfEquals<GameStatus, GameManifest['status']> = true
+    expect(statusesAgree).toBe(true)
   })
 })

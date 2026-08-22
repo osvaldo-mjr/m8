@@ -17,7 +17,12 @@ WORKDIR /app
 # a line here.
 COPY package.json package-lock.json ./
 COPY packages/avatars/package.json ./packages/avatars/package.json
+COPY packages/contract/package.json ./packages/contract/package.json
 COPY packages/core/package.json ./packages/core/package.json
+COPY packages/games/chess/package.json ./packages/games/chess/package.json
+COPY packages/games/dominoes/package.json ./packages/games/dominoes/package.json
+COPY packages/games/draughts/package.json ./packages/games/draughts/package.json
+COPY packages/games/tic-tac-toe/package.json ./packages/games/tic-tac-toe/package.json
 COPY packages/protocol/package.json ./packages/protocol/package.json
 COPY packages/tokens/package.json ./packages/tokens/package.json
 COPY packages/transport/package.json ./packages/transport/package.json

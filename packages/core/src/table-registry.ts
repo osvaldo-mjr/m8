@@ -1,11 +1,12 @@
 import { isAvatarId } from '@m8/avatars'
 import type { Clock } from './clock.js'
-import type { DomainEvent } from './events.js'
 import type { IdSource } from './ids.js'
 import { generateTableCode, normalizeTableCode } from './table-code.js'
 import type { Rng } from './rng.js'
+import { canStart, createSeats, firstFreeSeat, occupiedCount, seatOf } from './seats.js'
+import type { Seat } from './seats.js'
 import type { Participant, Table, TablePhase } from './table.js'
-import type { DomainError, ParticipantView, TableView } from './views.js'
+import type { DeviceView, DomainError, ParticipantView, SeatView, TableView } from './views.js'
 
 /**
  * How many characters of a nickname are kept. The rule lives here, in the
@@ -54,16 +55,16 @@ export type OpenTableResult =
   | { readonly error: DomainError }
 
 export type JoinResult =
-  | { readonly table: Table; readonly participant: Participant; readonly events: DomainEvent[] }
+  | { readonly table: Table; readonly participant: Participant }
   | { readonly error: DomainError }
 
 /**
  * The registry's own writable shape. `Table` and `Participant` (exported to
  * everyone else) are readonly all the way down, so a consumer outside this
  * class can read a table but cannot mutate it without going through a method
- * that emits the `DomainEvent` describing the change. A `MutableTable` is
- * structurally assignable to a `Table` — same object, narrower type at the
- * boundary — which is why the public methods can just return one.
+ * on this class. A `MutableTable` is structurally assignable to a `Table` —
+ * same object, narrower type at the boundary — which is why the public
+ * methods can just return one.
  */
 interface MutableParticipant {
   readonly id: string
@@ -80,6 +81,11 @@ interface MutableTable {
   readonly participants: MutableParticipant[]
   batonHolderId: string | null
   readonly createdAt: number
+  round: number
+  chosenGameId: string | null
+  preview: { gameId: string; page: number } | null
+  seats: readonly Seat[]
+  seatsMin: number | null
 }
 
 /**
@@ -134,17 +140,148 @@ export class TableRegistry {
       participants: [],
       batonHolderId: null,
       createdAt: this.#clock.now(),
+      round: 1,
+      chosenGameId: null,
+      preview: null,
+      seats: [],
+      seatsMin: null,
     }
     this.#tables.set(minted, table)
     return { table }
   }
 
-  joinParticipant(code: string, token: string | undefined): JoinResult {
+  /**
+   * Only the host is at the table before a game is chosen. Creating the
+   * game's maximum in seats and seating the baton holder in seat 1 happens
+   * here, in the same call, because wanting to play is the common case.
+   */
+  chooseGame(
+    code: string,
+    participantId: string,
+    gameId: string,
+    seats: { readonly min: number; readonly max: number },
+  ): { readonly error: DomainError } | undefined {
+    const table = this.#findMutable(code)
+    if (!table) return { error: 'unknown-table' }
+    if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+    // A repeat choice — plausible from a phone resending a tap it thinks
+    // never landed — must not silently re-size the seats and orphan whoever
+    // already claimed one. This milestone has no path back out of a chosen
+    // game, so a second choice is simply refused rather than replacing one
+    // in-progress seating with another.
+    if (table.chosenGameId !== null) return { error: 'not-allowed' }
+
+    table.chosenGameId = gameId
+    table.seats = createSeats(seats.max)
+    table.seatsMin = seats.min
+    this.#occupySeat(table, 1, participantId)
+    table.preview = null
+    table.phase = 'seating'
+    return undefined
+  }
+
+  /**
+   * Puts a game on the table for browsing, at its first page. Refused for
+   * anyone but the baton holder, and once more for anyone at all once a game
+   * is already chosen — there is no path back to browsing from seating, the
+   * same rule `chooseGame` itself enforces for a second choice.
+   *
+   * `gameId` is not checked against a catalogue here: `packages/core` may not
+   * read one (invariant 1), so an id naming nothing is simply stored. It
+   * resolves to no preview at all when the server translates the table,
+   * which is the one place that can tell a real id from a withdrawn one.
+   */
+  previewGame(
+    code: string,
+    participantId: string,
+    gameId: string,
+  ): { readonly error: DomainError } | undefined {
+    const table = this.#findMutable(code)
+    if (!table) return { error: 'unknown-table' }
+    if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+    if (table.chosenGameId !== null) return { error: 'not-allowed' }
+
+    table.preview = { gameId, page: 0 }
+    return undefined
+  }
+
+  /**
+   * Turns the page of whatever is currently on preview. Refused for anyone
+   * but the baton holder, refused with nothing to turn when no game is
+   * being previewed — a `manualPage` arriving after the box was cleared (a
+   * choice already made, or a search resumed and abandoned) has nothing to
+   * act on — and, explicitly, refused once a game is already chosen. That
+   * last guard is reachable only defensively today: `chooseGame` already
+   * clears `preview` to `null`, so the guard above it already refuses this
+   * case on its own. It is stated anyway, mirroring `previewGame`'s own
+   * guard, rather than left to hold only by coincidence with a different
+   * one.
+   *
+   * The page itself arrives already clamped: `packages/core` does not know
+   * how many pages a manual has, only the server that read the manifest
+   * does.
+   */
+  setPreviewPage(
+    code: string,
+    participantId: string,
+    page: number,
+  ): { readonly error: DomainError } | undefined {
+    const table = this.#findMutable(code)
+    if (!table) return { error: 'unknown-table' }
+    if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+    if (table.chosenGameId !== null) return { error: 'not-allowed' }
+    if (table.preview === null) return { error: 'not-allowed' }
+
+    table.preview = { gameId: table.preview.gameId, page }
+    return undefined
+  }
+
+  /**
+   * The host stepping out of their seat and back into it. The switch starts
+   * on, because chooseGame already seated him. Stepping back in claims
+   * whatever seat is free, not necessarily the one he left — a chair, not a
+   * name plate.
+   */
+  setHostPlaying(
+    code: string,
+    participantId: string,
+    playing: boolean,
+  ): { readonly error: DomainError } | undefined {
+    const table = this.#findMutable(code)
+    if (!table) return { error: 'unknown-table' }
+    if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+
+    if (playing) {
+      // A retried call — plausible from a reconnect-heavy client that
+      // resends its last intent — must not claim a further seat for someone
+      // already seated.
+      if (seatOf(table.seats, participantId)) return undefined
+      const seat = firstFreeSeat(table.seats)
+      if (!seat) return { error: 'table-full' }
+      this.#occupySeat(table, seat.number, participantId)
+    } else {
+      const seat = seatOf(table.seats, participantId)
+      if (seat) this.#occupySeat(table, seat.number, null)
+    }
+    return undefined
+  }
+
+  joinParticipant(code: string, token: string | undefined, round?: number): JoinResult {
     const normalized = normalizeTableCode(code)
     if (normalized === null) return { error: 'invalid-code' }
 
     const table = this.#tables.get(normalized)
     if (!table) return { error: 'unknown-table' }
+
+    /**
+     * A stale marker means this phone is resuming a session the table has moved
+     * past — a page left open in a pocket, reconnecting on its own. Refusing it
+     * is what stops a seat being taken by nobody.
+     *
+     * No marker at all means someone typed the code, which is as deliberate an
+     * act as scanning, so it is admitted and assigned the current round.
+     */
+    if (round !== undefined && round !== table.round) return { error: 'stale-round' }
 
     const returning = token === undefined
       ? undefined
@@ -152,16 +289,24 @@ export class TableRegistry {
 
     if (returning) {
       returning.connected = true
-      return {
-        table,
-        participant: returning,
-        events: [{ type: 'participant-rejoined', code: table.code, participantId: returning.id }],
-      }
+      return { table, participant: returning }
     }
+
+    const isFirstArrival = table.batonHolderId === null
+
+    // Only the host is at the table before a game is chosen. Claiming the
+    // seat only once a nickname is confirmed would let two people type for
+    // the last chair and one discover the loss on pressing confirm, so a
+    // later arrival claims a seat here, on arrival, before the host has even
+    // created any.
+    if (!isFirstArrival && table.chosenGameId === null) return { error: 'not-allowed' }
 
     // Checked only on this path: a returning token takes no new place,
     // because the participant it names already occupies one.
     if (table.participants.length >= MAX_PARTICIPANTS) return { error: 'table-full' }
+
+    const seat = isFirstArrival ? undefined : firstFreeSeat(table.seats)
+    if (!isFirstArrival && !seat) return { error: 'table-full' }
 
     const participant: MutableParticipant = {
       id: this.#newParticipantId(),
@@ -173,61 +318,86 @@ export class TableRegistry {
     }
     table.participants.push(participant)
 
-    const events: DomainEvent[] = [
-      { type: 'participant-joined', code: table.code, participantId: participant.id },
-    ]
-
-    if (table.batonHolderId === null) {
+    if (isFirstArrival) {
       table.batonHolderId = participant.id
       table.phase = 'choosing-game'
-      events.push({ type: 'baton-granted', code: table.code, participantId: participant.id })
+    } else if (seat) {
+      this.#occupySeat(table, seat.number, participant.id)
     }
 
-    return { table, participant, events }
+    return { table, participant }
   }
 
-  disconnectParticipant(code: string, participantId: string): DomainEvent[] {
+  disconnectParticipant(code: string, participantId: string): void {
     const table = this.#findMutable(code)
     const participant = table?.participants.find((p) => p.id === participantId)
-    if (!table || !participant) return []
+    if (!table || !participant) return
 
     participant.connected = false
-    return [{ type: 'participant-disconnected', code: table.code, participantId }]
   }
 
-  removeParticipant(code: string, participantId: string): DomainEvent[] {
+  removeParticipant(code: string, participantId: string): void {
     const table = this.#findMutable(code)
-    if (!table) return []
+    if (!table) return
 
     const index = table.participants.findIndex((p) => p.id === participantId)
-    if (index === -1) return []
+    if (index === -1) return
 
     table.participants.splice(index, 1)
-    const events: DomainEvent[] = [
-      { type: 'participant-left', code: table.code, participantId },
-    ]
 
-    if (table.batonHolderId !== participantId) return events
+    // A departing participant leaves no ghost in the chair: the seat is a
+    // role, not a person, so it is vacated the moment nobody fills it, ready
+    // for the next arrival's firstFreeSeat.
+    const seat = seatOf(table.seats, participantId)
+    if (seat) this.#occupySeat(table, seat.number, null)
+
+    if (table.batonHolderId !== participantId) return
 
     // The baton is leased to the table, not carried by the person, so it moves
     // to whoever has been here longest rather than ending the session.
     const successor = table.participants[0]
     if (successor) {
       table.batonHolderId = successor.id
-      events.push({ type: 'baton-migrated', code: table.code, participantId: successor.id })
-    } else {
-      table.batonHolderId = null
-      table.phase = 'awaiting-host'
-      events.push({ type: 'table-emptied', code: table.code })
+      return
     }
 
-    return events
+    this.#empty(table)
   }
 
-  setProfile(code: string, participantId: string, nickname: string, avatarId: string): DomainEvent[] {
+  /**
+   * Nobody is left, so the table becomes what a screen opens: no host, no
+   * game, no seats, nothing on preview.
+   *
+   * Setting only the phase and the baton would leave the game, its seats, its
+   * minimum and any preview behind on a table with nobody at it — and the next
+   * arrival would become host of a table that already had a game chosen.
+   * `canChooseGame` is `hasBaton && chosenGameId === null`, so that host could
+   * never choose anything: the catalogue would list every game with the choice
+   * refused, for good. The joining QR would show as well, since a chosen game
+   * with free seats is exactly when it does, inviting strangers to take seats
+   * for a game nobody picked.
+   *
+   * The round is deliberately not advanced. It exists to refuse a phone
+   * resuming a session the table has moved past, and nothing can be holding
+   * one here: a table only empties because every participant left, and leaving
+   * is deliberate — a disconnection removes nobody. The two actions that will
+   * advance it, "Clear seats" and "Change game", end a match other people are
+   * still sitting at, which is when a stale session is genuinely possible;
+   * both arrive with Plan 3, and so does the bump.
+   */
+  #empty(table: MutableTable): void {
+    table.batonHolderId = null
+    table.phase = 'awaiting-host'
+    table.chosenGameId = null
+    table.preview = null
+    table.seats = []
+    table.seatsMin = null
+  }
+
+  setProfile(code: string, participantId: string, nickname: string, avatarId: string): void {
     const table = this.#findMutable(code)
     const participant = table?.participants.find((p) => p.id === participantId)
-    if (!table || !participant) return []
+    if (!table || !participant) return
 
     const trimmed = nickname.trim()
     // A blank nickname carries no information about intent: the empty
@@ -235,17 +405,16 @@ export class TableRegistry {
     // yet", so accepting one here would make that sentinel ambiguous with a
     // deliberate choice. Treated as no change at all, not a change to an
     // empty nickname, so a stray submit cannot discard an avatar pick either.
-    if (trimmed === '') return []
+    if (trimmed === '') return
 
     // An id naming no avatar carries no intent either, and the server is the
     // only thing standing between a hand-written message and a value every
     // screen in the room then renders. Same rule as the blank nickname: not a
     // change to something else, no change at all.
-    if (!isAvatarId(avatarId)) return []
+    if (!isAvatarId(avatarId)) return
 
     participant.nickname = trimmed.slice(0, NICKNAME_MAX_LENGTH)
     participant.avatarId = avatarId
-    return [{ type: 'profile-changed', code: table.code, participantId }]
   }
 
   /** The full public view of a table. Tokens never appear here. */
@@ -257,8 +426,65 @@ export class TableRegistry {
       connected: p.connected,
       hasBaton: table.batonHolderId === p.id,
     }))
+    const byId = new Map(participants.map((p) => [p.id, p]))
 
-    return { code: table.code, phase: table.phase, participants }
+    const seats: SeatView[] = table.seats.map((seat) => ({
+      number: seat.number,
+      occupant: seat.occupantId === null ? null : byId.get(seat.occupantId) ?? null,
+    }))
+
+    return {
+      code: table.code,
+      phase: table.phase,
+      participants,
+      seats,
+      chosenGameId: table.chosenGameId,
+      preview: table.preview,
+      qrVisible: this.#qrVisible(table),
+    }
+  }
+
+  /**
+   * What one phone is told: decisions rather than data, and nothing of the
+   * table's. `canStart` and `playersNeeded` are computed here from the seats
+   * and the chosen game's minimum, so a rule that decides whether a match may
+   * begin exists in exactly one place rather than being reimplemented on the
+   * device.
+   *
+   * `canChooseGame` is gated on `chosenGameId === null` as well as on holding
+   * the baton: `chooseGame` itself refuses a second call once a game is
+   * chosen (see `chooseGame`'s own guard), and a `DeviceView` that still
+   * answered `true` here would offer an action the domain is about to
+   * reject — the exact failure this split exists to prevent.
+   */
+  deviceView(table: Table, participantId: string): DeviceView {
+    const seat = seatOf(table.seats, participantId)
+    const hasBaton = table.batonHolderId === participantId
+    const min = table.seatsMin
+
+    return {
+      participantId,
+      phase: table.phase,
+      seatNumber: seat?.number ?? null,
+      hasBaton,
+      canChooseGame: hasBaton && table.chosenGameId === null,
+      canStart: min === null ? false : canStart(table.seats, min),
+      playersNeeded: min === null ? 0 : Math.max(0, min - occupiedCount(table.seats)),
+    }
+  }
+
+  /**
+   * Whether the large screen should show the joining QR right now, computed
+   * once so the television never has a rule of its own to disagree with.
+   * Mirrors exactly the arrivals `joinParticipant` itself admits: the very
+   * first (before anyone holds the baton), or anyone while a chosen game
+   * still has a free seat. Between those two moments — the host alone,
+   * before choosing a game — nobody else may join, so the code is not shown.
+   */
+  #qrVisible(table: Table): boolean {
+    if (table.batonHolderId === null) return true
+    if (table.chosenGameId === null) return false
+    return firstFreeSeat(table.seats) !== undefined
   }
 
   /** A code no live table holds, or undefined once the space is full. */
@@ -274,5 +500,16 @@ export class TableRegistry {
   #findMutable(code: string): MutableTable | undefined {
     const normalized = normalizeTableCode(code)
     return normalized === null ? undefined : this.#tables.get(normalized)
+  }
+
+  /**
+   * `Seat` is readonly all the way down, like everything else this class
+   * hands out, so occupying or vacating one replaces it rather than writing
+   * through it.
+   */
+  #occupySeat(table: MutableTable, seatNumber: number, occupantId: string | null): void {
+    table.seats = table.seats.map((seat) =>
+      seat.number === seatNumber ? { number: seat.number, occupantId } : seat,
+    )
   }
 }

@@ -41,3 +41,27 @@ export const AVATAR_TILE_UNCHOSEN_CLASS = 'rounded-2xl border-4 border-transpare
 export function avatarTileClassName(chosen: boolean): string {
   return chosen ? AVATAR_TILE_CHOSEN_CLASS : AVATAR_TILE_UNCHOSEN_CLASS
 }
+
+/**
+ * The one button this app has, in its two states.
+ *
+ * TAKE A PLACE, PLAY THIS and START were three copies of the same ternary —
+ * the first two identical to the character, the third differing only by its
+ * width — so a change to how a disabled control reads had three places to
+ * make it and two chances to miss one.
+ *
+ * Disabled is drawn as an outline in this person's colour, not as the same
+ * button faded out: a saturated colour at 40% over the ground turns to mud,
+ * and mud is the one thing the palette is not allowed to produce.
+ */
+export const PRIMARY_BUTTON_ENABLED_CLASS = 'm8-person-bg m8-eyebrow rounded-2xl py-5 text-lg text-ink'
+export const PRIMARY_BUTTON_DISABLED_CLASS =
+  'm8-person-text m8-eyebrow rounded-2xl border-2 border-current py-5 text-lg'
+
+export function primaryButtonClassName(
+  enabled: boolean,
+  options: { readonly fullWidth?: boolean } = {},
+): string {
+  const base = enabled ? PRIMARY_BUTTON_ENABLED_CLASS : PRIMARY_BUTTON_DISABLED_CLASS
+  return options.fullWidth === true ? `${base} w-full` : base
+}

@@ -1,5 +1,14 @@
-import type { DomainError, ParticipantView, TableView } from '@m8/core'
-import type { ErrorCode, ParticipantSnapshot, TableSnapshot } from '@m8/protocol'
+import type { GameManifest } from '@m8/contract'
+import type { DeviceView, DomainError, ParticipantView, SeatView, TableView } from '@m8/core'
+import type {
+  DeviceSnapshot,
+  ErrorCode,
+  ParticipantSnapshot,
+  PreviewSnapshot,
+  SeatSnapshot,
+  TableSnapshot,
+} from '@m8/protocol'
+import { coverUrl, manifestPageCount } from './catalogue.js'
 
 /**
  * The only place that knows both `@m8/core`'s vocabulary and the wire
@@ -20,11 +29,99 @@ export function translateParticipant(participant: ParticipantView): ParticipantS
   }
 }
 
-export function translateTable(table: TableView): TableSnapshot {
+export function translateSeat(seat: SeatView): SeatSnapshot {
+  return {
+    number: seat.number,
+    occupant: seat.occupant === null ? null : translateParticipant(seat.occupant),
+  }
+}
+
+export function translateDevice(device: DeviceView): DeviceSnapshot {
+  return {
+    participantId: device.participantId,
+    phase: device.phase,
+    seatNumber: device.seatNumber,
+    hasBaton: device.hasBaton,
+    canChooseGame: device.canChooseGame,
+    canStart: device.canStart,
+    playersNeeded: device.playersNeeded,
+  }
+}
+
+/**
+ * Confines `page` to a valid index into a manual of `pageCount` pages.
+ * Exported so `session.ts` can apply the same rule to an incoming
+ * `manualPage` before it ever reaches core — the one file both call, so the
+ * boundary cannot drift between where a page is requested and where it is
+ * resolved.
+ *
+ * Total for every finite `page` and every `pageCount`, including the two
+ * edges that would otherwise index past an array:
+ * - `pageCount <= 0` — a manual with no pages, which `manifestFaults`
+ *   rejects but this function does not get to assume; `0` is returned as a
+ *   value that is never actually used to index (the caller checks
+ *   `pageCount` first — see `translatePreview`).
+ * - a fractional `page` — the wire is expected to reject one before this is
+ *   ever called (see `validate.ts`), but this is the last line of defence
+ *   before `manifest.manual[locale][page]`, so it does not depend on that
+ *   guarantee holding three packages away.
+ */
+export function clampPage(page: number, pageCount: number): number {
+  if (pageCount <= 0) return 0
+  return Math.floor(Math.min(Math.max(page, 0), pageCount - 1))
+}
+
+/**
+ * Turns core's `{ gameId, page }` — a number, nothing else, because core may
+ * not read a manifest — into the text and cover art the screen renders.
+ *
+ * A `gameId` naming no manifest resolves to `null` rather than throwing: the
+ * only way to reach this is a game withdrawn between the tap that previewed
+ * it and this translation, and a screen briefly showing a bare table beats
+ * one showing a stack trace.
+ */
+function translatePreview(
+  preview: TableView['preview'],
+  catalogue: readonly GameManifest[],
+): PreviewSnapshot | null {
+  if (preview === null) return null
+
+  const manifest = catalogue.find((candidate) => candidate.id === preview.gameId)
+  if (!manifest) return null
+
+  const count = manifestPageCount(manifest)
+  // A manifest with no pages at all has nothing to show; manifestFaults
+  // rejects one before it ever reaches a real catalogue, but this function
+  // does not depend on that holding — indexing manual[0] into an empty
+  // array is exactly as invalid as indexing manual[-1].
+  if (count <= 0) return null
+  const page = clampPage(preview.page, count)
+
+  return {
+    gameId: manifest.id,
+    cover: coverUrl(manifest),
+    name: manifest.name,
+    page,
+    pageCount: count,
+    title: {
+      'pt-BR': manifest.manual['pt-BR'][page]!.title,
+      en: manifest.manual.en[page]!.title,
+    },
+    lines: {
+      'pt-BR': manifest.manual['pt-BR'][page]!.lines,
+      en: manifest.manual.en[page]!.lines,
+    },
+  }
+}
+
+export function translateTable(table: TableView, catalogue: readonly GameManifest[]): TableSnapshot {
   return {
     code: table.code,
     phase: table.phase,
     participants: table.participants.map(translateParticipant),
+    seats: table.seats.map(translateSeat),
+    qrVisible: table.qrVisible,
+    preview: translatePreview(table.preview, catalogue),
   }
 }
 
@@ -39,6 +136,7 @@ const DOMAIN_ERROR_TO_ERROR_CODE: Record<DomainError, ErrorCode> = {
   'table-full': 'table-full',
   'not-allowed': 'not-allowed',
   'table-unavailable': 'table-unavailable',
+  'stale-round': 'stale-round',
 }
 
 export function translateError(error: DomainError): ErrorCode {
