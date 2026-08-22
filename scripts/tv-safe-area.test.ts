@@ -540,6 +540,79 @@ describe('the screen at every number of people the table holds', () => {
       }
       expect(overscanPixels(threeLines, safe.height)).toBeGreaterThan(0)
     })
+
+    /**
+     * The choosing screen: the game's box on the left, its manual open
+     * beside it — `renderChoosing` in `apps/tv/src/render.ts`. Both are
+     * placed through the same scatter the code tiles and the QR are, at the
+     * QR's own smaller step (`--m8-qr-scatter-step`), so the same proof
+     * applies with the same functions; only the sizes differ.
+     *
+     * The manual is not square — it is wider than it is tall, to hold a few
+     * short lines of text rather than one character. `tiltedExtent` and its
+     * kin model a square, so the manual is charged at
+     * `Math.max(width, height)` on both axes rather than at its true
+     * rectangle: a real turned rectangle's bounding box is never wider, on
+     * either axis, than the square of its longer side turned the same way
+     * (`w·cosθ + h·sinθ ≤ L·(cosθ + sinθ)` and symmetrically for the other
+     * axis, whenever `L = max(w, h)`), so this is a safe over-estimate
+     * rather than a new formula to get wrong. Because the manual is drawn
+     * wider than it is tall, `L` is its declared width, so the charge is
+     * exactly what `rowExtent` below already needs for the sideways sum —
+     * no separate figure to keep in step.
+     *
+     * There is no row of people under this screen — the choosing screen
+     * draws none — so the table itself is given the whole of what is left
+     * once the eyebrow is subtracted, rather than competing with a second
+     * element the way the join screen's table does.
+     */
+    describe('the choosing screen: the box and the manual', () => {
+      const boxSize = pixels(sizes, '--m8-box-size')
+      const manualWidth = pixels(sizes, '--m8-manual-width')
+      const manualHeight = pixels(sizes, '--m8-manual-height')
+      const manualExtent = Math.max(manualWidth, manualHeight)
+      const previewStep = pixels(sizes, '--m8-qr-scatter-step')
+      const previewLift = previewStep * maxLiftSteps
+      const previewWidestGap = pixels(sizes, '--m8-piece-gap') + previewStep * maxSpaceSteps
+
+      it('draws the manual wider than it is tall, which the model above relies on', () => {
+        expect(manualWidth).toBeGreaterThanOrEqual(manualHeight)
+      })
+
+      function choosingNeeds(degrees: number): number {
+        return Math.max(
+          scatteredExtent(boxSize, degrees, previewLift),
+          scatteredExtent(manualExtent, degrees, previewLift),
+        )
+      }
+
+      function choosingStage(degrees: number = maxTiltDegrees) {
+        return {
+          eyebrowHeight: pixels(sizes, '--m8-wordmark-type'),
+          tableGap: pixels(sizes, '--m8-row-gap'),
+          tableMinHeight: surfaceHeight(choosingNeeds(degrees), edgeHeight),
+          peopleHeight: 0,
+        }
+      }
+
+      it.each(tiltMagnitudes)('keeps the box and the manual inside the safe area at %s degrees', (degrees) => {
+        expect(overscanPixels(choosingStage(degrees), safe.height)).toBeLessThanOrEqual(0)
+      })
+
+      it.each(tiltMagnitudes)('keeps the box and the manual on the table sideways at %s degrees', (degrees) => {
+        // Left to right: the box, the gap the scatter may widen, then the
+        // manual — the same shape `rowExtent` already models for the code
+        // tiles and the QR — plus the shadow each end throws outwards.
+        const across =
+          rowExtent([boxSize, manualWidth], [previewWidestGap], degrees) + shadowAcross * 2
+        expect(across).toBeLessThanOrEqual(safe.width)
+      })
+
+      it('keeps the shadow the taller piece casts on the table rather than off its edge', () => {
+        const room = surfaceContentHeight(tableHeight(choosingStage(), safe.height), edgeHeight)
+        expect((room - choosingNeeds(maxTiltDegrees)) / 2).toBeGreaterThanOrEqual(shadowDown)
+      })
+    })
   })
 
   /**
@@ -631,10 +704,11 @@ describe('the screen at every number of people the table holds', () => {
       expect(pixels(sizes, '--m8-shadow-step')).toBeGreaterThan(0)
     })
 
-    it.each(['.m8-tile', '.m8-qr'])('drops a shadow under %s', (selector) => {
+    it.each(['.m8-tile', '.m8-qr', '.m8-box', '.m8-manual'])('drops a shadow under %s', (selector) => {
       // The tilt without a shadow reads as a layout mistake; with one it
-      // reads as an object put down on a surface. Both pieces carry it, and
-      // the colour comes from the tokens like every other colour does.
+      // reads as an object put down on a surface. Every piece carries it,
+      // including the two the choosing screen adds, and the colour comes
+      // from the tokens like every other colour does.
       expect(declaration(rule(styles, selector), 'box-shadow')).toBe(
         '0 var(--m8-shadow-lift) var(--m8-shadow-blur) var(--m8-shadow)',
       )
@@ -645,6 +719,31 @@ describe('the screen at every number of people the table holds', () => {
       expect(declaration(body, 'overflow')).toBe('hidden')
       expect(declaration(body, 'text-overflow')).toBe('ellipsis')
       expect(declaration(body, 'white-space')).toBe('nowrap')
+    })
+
+    it('fixes the manual at a declared size and clips anything that will not fit', () => {
+      // The manual's text comes from a manifest, not from this repository —
+      // a page's word count is guarded at 60 words by
+      // `packages/contract/src/manifest.ts`, but that guard lives three
+      // packages away from this screen and nothing here can lean on it
+      // holding. `width` and `height` fixed, plus `overflow: hidden`, is
+      // what turns a page that somehow slips past it into clipped text
+      // instead of a notebook pushed past the table's own edge.
+      const body = rule(styles, '.m8-manual')
+      expect(declaration(body, 'width')).toBe('var(--m8-manual-width)')
+      expect(declaration(body, 'height')).toBe('var(--m8-manual-height)')
+      expect(declaration(body, 'overflow')).toBe('hidden')
+    })
+
+    it.each(['.m8-box', '.m8-manual'])('keeps %s an ordinary child of the table, not pulled out of flow', (selector) => {
+      // The whole illusion of a scattered table — pieces resting on a rigid
+      // surface — depends on every piece staying in normal document flow
+      // inside `.m8-table`, the same surface the code tiles and the QR sit
+      // on. A piece pulled out of flow with `position` would escape both the
+      // table's own layout and the geometry proof above, which assumes a
+      // flex row.
+      const body = rule(styles, selector)
+      expect(body).not.toMatch(/(?:^|[;{])\s*position\s*:/)
     })
   })
 

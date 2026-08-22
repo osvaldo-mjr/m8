@@ -91,6 +91,16 @@
   --m8-chip-note-type: 13px;
   --m8-chip-gap: 44px;
   --m8-row-gap: 32px;
+  --m8-box-size: 220px;
+  --m8-box-radius: 14px;
+  --m8-manual-width: 400px;
+  --m8-manual-height: 260px;
+  --m8-manual-radius: 14px;
+  --m8-manual-padding: 28px;
+  --m8-manual-title-type: 24px;
+  --m8-manual-line-type: 19px;
+  --m8-manual-line-gap: 10px;
+  --m8-manual-page-type: 15px;
 }
 
 @media (min-width: 1600px) {
@@ -126,6 +136,16 @@
     --m8-chip-note-type: 19px;
     --m8-chip-gap: 64px;
     --m8-row-gap: 44px;
+    --m8-box-size: 320px;
+    --m8-box-radius: 22px;
+    --m8-manual-width: 580px;
+    --m8-manual-height: 380px;
+    --m8-manual-radius: 22px;
+    --m8-manual-padding: 40px;
+    --m8-manual-title-type: 34px;
+    --m8-manual-line-type: 26px;
+    --m8-manual-line-gap: 14px;
+    --m8-manual-page-type: 20px;
   }
 }
 
@@ -485,6 +505,91 @@ img {
   display: block;
   width: var(--m8-qr-size);
   height: var(--m8-qr-size);
+}
+
+/*
+ * The choosing screen: the game's box on the left, its manual open beside
+ * it, both placed through the same scatter the code tiles and the QR use —
+ * see `apps/tv/src/tilt.ts` and `renderChoosing`. `.m8-table` already centres
+ * a row of pieces, so the `m8-table-choosing` variant it is drawn with, like
+ * `m8-table-join`, carries no rule of its own.
+ */
+
+/*
+ * The box: the cover art, edge to edge, with no quiet zone the way the QR
+ * needs one. `overflow: hidden` is what lets a plain `border-radius` round
+ * an image that fills its box exactly, rather than clipping to a rectangle
+ * underneath a rounded one.
+ */
+.m8-box {
+  flex: 0 0 auto;
+  width: var(--m8-box-size);
+  height: var(--m8-box-size);
+  overflow: hidden;
+  border-radius: var(--m8-box-radius);
+  background-color: var(--m8-paper);
+  box-shadow: 0 var(--m8-shadow-lift) var(--m8-shadow-blur) var(--m8-shadow);
+}
+
+.m8-box img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* `object-fit` is Chromium 32; safe well inside the declared floor. */
+  object-fit: cover;
+}
+
+/*
+ * The manual: paper, like every other piece on this table, and fixed in both
+ * dimensions on purpose. `overflow: hidden` is the second half of that — a
+ * page that somehow slips past the manifest's word guard degrades to clipped
+ * text rather than to a notebook pushing past the table's own edge.
+ * `scripts/tv-safe-area.test.ts` asserts both declarations directly, on the
+ * stylesheet itself, rather than trusting this sentence.
+ */
+.m8-manual {
+  flex: 0 0 auto;
+  width: var(--m8-manual-width);
+  height: var(--m8-manual-height);
+  overflow: hidden;
+  padding: var(--m8-manual-padding);
+  border-radius: var(--m8-manual-radius);
+  background-color: var(--m8-paper);
+  box-shadow: 0 var(--m8-shadow-lift) var(--m8-shadow-blur) var(--m8-shadow);
+  color: var(--m8-ink);
+}
+
+.m8-manual-title {
+  font-family: var(--m8-font-text);
+  font-weight: 700;
+  font-size: var(--m8-manual-title-type);
+  line-height: 1.2;
+}
+
+.m8-manual-lines {
+  margin-top: var(--m8-manual-line-gap);
+}
+
+.m8-manual-line {
+  margin-top: var(--m8-manual-line-gap);
+  font-family: var(--m8-font-text);
+  font-size: var(--m8-manual-line-type);
+  line-height: 1.3;
+}
+
+.m8-manual-line:first-child {
+  margin-top: 0;
+}
+
+/* The small "N of M" under the text. Muted by opacity, not a second ink
+ * token — `packages/tokens` stays the only place a colour value is written.
+ */
+.m8-manual-page {
+  margin-top: var(--m8-manual-line-gap);
+  font-family: var(--m8-font-text);
+  font-size: var(--m8-manual-page-type);
+  letter-spacing: 0.08em;
+  opacity: 0.7;
 }
 
 /*

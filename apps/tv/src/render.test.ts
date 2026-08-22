@@ -1,16 +1,29 @@
 // @vitest-environment jsdom
 import { AVATARS } from '@m8/avatars'
-import type { ParticipantSnapshot } from '@m8/protocol'
+import type { ParticipantSnapshot, PreviewSnapshot, TableSnapshot } from '@m8/protocol'
 import { personColor } from '@m8/tokens'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CHIPS_ABREAST,
   DISPLAY_FACE_STRINGS,
   DISPLAY_FACE_SUBSET,
+  SCREEN_LOCALE,
+  renderChoosing,
   renderError,
+  renderScreen,
   renderTable,
   renderWaiting,
 } from './render.js'
+import type { ChoosingView } from './render.js'
+
+/** How many steps sideways a piece throws its shadow, as the renderer wrote it. */
+function shadowAcross(piece: HTMLElement): number {
+  const match = /^calc\(var\(--m8-shadow-step\) \* (-?\d+)\)/.exec(piece.style.boxShadow)
+  if (match === null || match[1] === undefined) {
+    throw new Error(`No sideways shadow: ${piece.style.boxShadow}`)
+  }
+  return Number.parseInt(match[1], 10)
+}
 
 /** What a screen on the owner's LAN would actually have been reached at. */
 const ADDRESS = '192.168.0.6:3000'
@@ -240,15 +253,6 @@ describe('renderTable', () => {
 describe('the code, drawn as four objects', () => {
   function tiles(target: HTMLElement = root): HTMLElement[] {
     return Array.from(target.querySelectorAll('.m8-tile'))
-  }
-
-  /** How many steps sideways a piece throws its shadow, as the renderer wrote it. */
-  function shadowAcross(piece: HTMLElement): number {
-    const match = /^calc\(var\(--m8-shadow-step\) \* (-?\d+)\)/.exec(piece.style.boxShadow)
-    if (match === null || match[1] === undefined) {
-      throw new Error(`No sideways shadow: ${piece.style.boxShadow}`)
-    }
-    return Number.parseInt(match[1], 10)
   }
 
   it('draws one tile per character rather than one string', () => {
@@ -592,6 +596,245 @@ describe('the row of people, redrawn', () => {
 
     expect(chips()).toHaveLength(1)
     expect(root.textContent).toContain('Ana')
+  })
+})
+
+describe('renderChoosing', () => {
+  function view(overrides: Partial<ChoosingView> = {}): ChoosingView {
+    return {
+      code: 'KXTP',
+      cover: '/games/chess/cover.svg',
+      title: { 'pt-BR': 'A vez', en: 'Your turn' },
+      lines: {
+        'pt-BR': ['Mova uma peça por vez.', 'Cada peça se move à sua maneira.'],
+        en: ['Move one piece at a time.', 'Each piece moves its own way.'],
+      },
+      page: 1,
+      pageCount: 3,
+      ...overrides,
+    }
+  }
+
+  it('points the cover image at the URL the snapshot carries', () => {
+    renderChoosing(root, view())
+    const image = root.querySelector('.m8-box img')
+    expect(image?.getAttribute('src')).toBe('/games/chess/cover.svg')
+  })
+
+  it("shows the page's title and every one of its lines, in the screen locale", () => {
+    renderChoosing(root, view())
+    expect(root.textContent).toContain('A vez')
+    expect(root.textContent).toContain('Mova uma peça por vez.')
+    expect(root.textContent).toContain('Cada peça se move à sua maneira.')
+  })
+
+  it('never shows the locale the screen did not pick', () => {
+    renderChoosing(root, view())
+    expect(root.textContent).not.toContain('Your turn')
+    expect(root.textContent).not.toContain('Move one piece at a time.')
+  })
+
+  it('reads the page indicator from page and pageCount, one-based for the room', () => {
+    // `page` is the zero-based index the wire carries — the same one
+    // `clampPage` on the server produces — so page 1 of 3 reads "2 of 3".
+    renderChoosing(root, view({ page: 1, pageCount: 3 }))
+    expect(root.textContent).toContain('2 of 3')
+  })
+
+  it('renders nothing interactive', () => {
+    renderChoosing(root, view())
+    expect(root.querySelectorAll('button, a, input, [tabindex]')).toHaveLength(0)
+  })
+
+  it('replaces previous content instead of appending', () => {
+    renderChoosing(root, view())
+    renderChoosing(
+      root,
+      view({
+        title: { 'pt-BR': 'Xeque-mate', en: 'Checkmate' },
+        lines: { 'pt-BR': ['Ameace o rei sem escapatória.'], en: ['Threaten the king with no escape.'] },
+        page: 2,
+      }),
+    )
+    expect(root.textContent).not.toContain('A vez')
+    expect(root.textContent).not.toContain('Cada peça se move à sua maneira.')
+    expect(root.querySelectorAll('.m8-manual-line')).toHaveLength(1)
+  })
+
+  it('keeps the same cover element when only the page turns', () => {
+    // The one image on this screen anyone stares at while the host flips
+    // pages. Rebuilding it on every `manualPage` tap would refetch and
+    // blink it, the same defect the QR's own reuse test guards against.
+    renderChoosing(root, view())
+    const first = root.querySelector('.m8-box img')
+
+    renderChoosing(root, view({ page: 2, title: { 'pt-BR': 'Xeque-mate', en: 'Checkmate' } }))
+
+    expect(root.querySelector('.m8-box img')).toBe(first)
+  })
+
+  it('builds a new box and manual when the table code changes', () => {
+    renderChoosing(root, view())
+    const first = root.querySelector('.m8-box img')
+
+    renderChoosing(root, view({ code: 'MNBV' }))
+
+    expect(root.querySelector('.m8-box img')).not.toBe(first)
+  })
+
+  it('gives each root its own box and manual', () => {
+    const other = document.createElement('div')
+    renderChoosing(root, view())
+    renderChoosing(other, view())
+
+    expect(other.querySelector('.m8-box img')).not.toBe(root.querySelector('.m8-box img'))
+  })
+})
+
+describe('the box and the manual, drawn as two objects', () => {
+  function view(overrides: Partial<ChoosingView> = {}): ChoosingView {
+    return {
+      code: 'KXTP',
+      cover: '/games/chess/cover.svg',
+      title: { 'pt-BR': 'A vez', en: 'Your turn' },
+      lines: { 'pt-BR': ['Mova uma peça por vez.'], en: ['Move one piece at a time.'] },
+      page: 0,
+      pageCount: 3,
+      ...overrides,
+    }
+  }
+
+  function box(target: HTMLElement = root): HTMLElement {
+    return target.querySelector('.m8-box') as HTMLElement
+  }
+
+  function manual(target: HTMLElement = root): HTMLElement {
+    return target.querySelector('.m8-manual') as HTMLElement
+  }
+
+  it('turns and lifts both the box and the manual, through the same scatter the table already has', () => {
+    renderChoosing(root, view())
+    for (const piece of [box(), manual()]) {
+      expect(piece.style.transform).toMatch(/^translateY\(calc\(var\(--m8-.*\)\) rotate\(-?\d/)
+    }
+  })
+
+  it('gives both the QR-scale step rather than the code tile step', () => {
+    // The box and the manual are large single objects, like the QR, and not
+    // a row several of which share a baseline, like the code tiles — so they
+    // take the QR's smaller step for the reason `tilt.ts` gives: a large
+    // lift on a large piece costs more room than it buys.
+    renderChoosing(root, view())
+    for (const piece of [box(), manual()]) {
+      expect(piece.style.transform).toContain('var(--m8-qr-scatter-step)')
+    }
+  })
+
+  it('throws the box shadow left and the manual shadow right', () => {
+    // Left to right on the table, same as the code tiles and the QR: the
+    // lamp is over the middle, so the leftmost piece throws left and the
+    // rightmost throws right.
+    renderChoosing(root, view())
+    expect(shadowAcross(box())).toBeLessThan(0)
+    expect(shadowAcross(manual())).toBeGreaterThan(0)
+  })
+
+  it('keeps the table itself square, never turned', () => {
+    renderChoosing(root, view())
+    expect((root.querySelector('.m8-table') as HTMLElement).style.transform).toBe('')
+  })
+
+  it('arranges the same table the same way every time it redraws', () => {
+    renderChoosing(root, view())
+    const before = box().style.transform
+
+    renderChoosing(root, view({ page: 1, title: { 'pt-BR': 'Outra', en: 'Other' } }))
+
+    expect(box().style.transform).toBe(before)
+  })
+
+  it('arranges a different table differently', () => {
+    renderChoosing(root, view())
+    const first = box().style.transform
+
+    const other = document.createElement('div')
+    renderChoosing(other, view({ code: 'MNBV' }))
+
+    expect(box(other).style.transform).not.toBe(first)
+  })
+})
+
+describe('renderScreen', () => {
+  const ADDRESS = '192.168.0.6:3000'
+
+  function preview(overrides: Partial<PreviewSnapshot> = {}): PreviewSnapshot {
+    return {
+      gameId: 'chess',
+      cover: '/games/chess/cover.svg',
+      name: { 'pt-BR': 'Xadrez', en: 'Chess' },
+      page: 0,
+      pageCount: 3,
+      title: { 'pt-BR': 'O tabuleiro', en: 'The board' },
+      lines: { 'pt-BR': ['Oito por oito casas.'], en: ['Eight by eight cells.'] },
+      ...overrides,
+    }
+  }
+
+  function table(overrides: Partial<TableSnapshot> = {}): TableSnapshot {
+    return {
+      code: 'KXTP',
+      phase: 'awaiting-host',
+      participants: [],
+      seats: [],
+      qrVisible: true,
+      preview: null,
+      ...overrides,
+    }
+  }
+
+  it('draws the join screen while awaiting the host', () => {
+    renderScreen(root, table({ participants: [participant({ nickname: 'Ana' })] }), ADDRESS)
+    expect(root.textContent).toContain('Ana')
+    expect(root.textContent).toContain('KXTP')
+  })
+
+  it('draws the box and the manual once a game is being previewed', () => {
+    renderScreen(root, table({ phase: 'choosing-game', preview: preview() }), ADDRESS)
+    expect(root.textContent).toContain('O tabuleiro')
+    expect(root.querySelector('.m8-box img')?.getAttribute('src')).toBe('/games/chess/cover.svg')
+  })
+
+  it('falls back to the waiting screen while choosing a game before anyone has previewed one', () => {
+    // The instant between arriving at this phase and the first
+    // `previewGame` — `table.preview` is still null, and this plan draws
+    // nothing else for that moment.
+    renderScreen(root, table({ phase: 'choosing-game', preview: null }), ADDRESS)
+    expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.waiting)
+  })
+
+  it('falls back to the waiting screen for seating, which the next plan draws', () => {
+    renderScreen(root, table({ phase: 'seating' }), ADDRESS)
+    expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.waiting)
+  })
+
+  // Nothing in this plan can start a match, so these four phases can arrive
+  // on the wire but never really happen. Named individually, rather than
+  // covered by the `seating` case above, because a `switch` silently
+  // rendering nothing for one of them would leave a blank television with
+  // no way to tell why — the one failure this target cannot be debugged
+  // through.
+  it.each(['playing', 'paused', 'awaiting-seat', 'finished'] as const)(
+    'falls back to the waiting screen for the unreachable phase %s',
+    (phase) => {
+      renderScreen(root, table({ phase }), ADDRESS)
+      expect(root.textContent).toContain(DISPLAY_FACE_STRINGS.waiting)
+    },
+  )
+
+  it('clears the box and the manual once the phase moves past choosing', () => {
+    renderScreen(root, table({ phase: 'choosing-game', preview: preview() }), ADDRESS)
+    renderScreen(root, table({ phase: 'seating' }), ADDRESS)
+    expect(root.querySelector('.m8-box')).toBeNull()
   })
 })
 

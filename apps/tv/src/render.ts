@@ -1,5 +1,5 @@
 import { avatarGlyph } from '@m8/avatars'
-import type { ErrorCode, ParticipantSnapshot } from '@m8/protocol'
+import type { ErrorCode, Locale, ParticipantSnapshot, TableSnapshot } from '@m8/protocol'
 import { PERSON_COLOR_PROPERTY, personColor } from '@m8/tokens'
 import {
   QR_SCATTER_STEP_PROPERTY,
@@ -20,6 +20,24 @@ export interface TvView {
    */
   readonly address: string
   readonly participants: readonly ParticipantSnapshot[]
+}
+
+/**
+ * Which language this screen reads a manual in. The wire carries both —
+ * `PreviewSnapshot`'s `name`, `title` and `lines` are all `Record<Locale,
+ * …>` — and this constant is the entire surface a later language switch
+ * would touch: nothing else in this file makes a locale decision.
+ */
+export const SCREEN_LOCALE: Locale = 'pt-BR'
+
+/** What `renderChoosing` draws: the box on the left, the manual on the right. */
+export interface ChoosingView {
+  readonly code: string
+  readonly cover: string
+  readonly title: Record<Locale, string>
+  readonly lines: Record<Locale, readonly string[]>
+  readonly page: number
+  readonly pageCount: number
 }
 
 /**
@@ -78,6 +96,15 @@ export const CHIPS_ABREAST = 4
  */
 const QR_PIECE_INDEX = 4
 const PIECE_COUNT = QR_PIECE_INDEX + 1
+
+/**
+ * The two things on the table while a game is being chosen: the box, then
+ * the manual. Its own small count, scattered by the same `tilt.ts` the code
+ * tiles and the QR use — see `renderChoosing`.
+ */
+const BOX_PIECE_INDEX = 0
+const MANUAL_PIECE_INDEX = 1
+const CHOOSING_PIECE_COUNT = MANUAL_PIECE_INDEX + 1
 
 /**
  * What is currently on screen, per root.
@@ -171,6 +198,90 @@ function qrPiece(placement: PiecePlacement | undefined, code: string): HTMLEleme
 /** The wooden surface everything is laid out on. It is never turned. */
 function surface(variant: string): HTMLElement {
   return element('div', `m8-table ${variant}`)
+}
+
+/**
+ * What is currently on the choosing screen, per root — the same reuse
+ * `TableDom` above exists for, and for the same reason: the box's cover
+ * `<img>` is the one element in this screen anyone stares at while turning
+ * pages, and rebuilding it on every `manualPage` tap would refetch and blink
+ * it, the way a rebuilt QR would. Keyed on `code` rather than on the game
+ * being previewed, because the scatter — the transform on the box and the
+ * manual — is derived from the table's code alone: browsing several games at
+ * one table never moves either piece, only what is drawn inside them.
+ */
+interface ChoosingDom {
+  readonly code: string
+  readonly stage: HTMLElement
+  readonly cover: HTMLImageElement
+  readonly title: HTMLElement
+  readonly lines: HTMLElement
+  readonly page: HTMLElement
+}
+
+const choosingScreens = new WeakMap<HTMLElement, ChoosingDom>()
+
+function buildChoosing(root: HTMLElement, code: string): ChoosingDom {
+  root.textContent = ''
+
+  const stage = element('div', 'm8-stage')
+  stage.appendChild(eyebrowRow())
+
+  // One call for both pieces, exactly as the join screen draws one call for
+  // its five — the guarantee that neighbours differ is about the pair, not
+  // about either piece alone.
+  const placements = arrangePieces(code, CHOOSING_PIECE_COUNT)
+  const boxPlacement = placements[BOX_PIECE_INDEX]
+  const manualPlacement = placements[MANUAL_PIECE_INDEX]
+
+  const table = surface('m8-table-choosing')
+
+  const box = element('div', 'm8-box')
+  if (boxPlacement !== undefined) {
+    box.style.transform = pieceTransform(boxPlacement, QR_SCATTER_STEP_PROPERTY)
+    box.style.boxShadow = pieceShadow(boxPlacement, BOX_PIECE_INDEX, CHOOSING_PIECE_COUNT)
+    box.style.marginRight = pieceSpacing(boxPlacement, QR_SCATTER_STEP_PROPERTY)
+  }
+  const cover = document.createElement('img')
+  cover.setAttribute('alt', '')
+  box.appendChild(cover)
+  table.appendChild(box)
+
+  const manual = element('div', 'm8-manual')
+  if (manualPlacement !== undefined) {
+    manual.style.transform = pieceTransform(manualPlacement, QR_SCATTER_STEP_PROPERTY)
+    manual.style.boxShadow = pieceShadow(manualPlacement, MANUAL_PIECE_INDEX, CHOOSING_PIECE_COUNT)
+  }
+  const title = element('p', 'm8-manual-title')
+  const lines = element('div', 'm8-manual-lines')
+  const page = element('p', 'm8-manual-page')
+  manual.appendChild(title)
+  manual.appendChild(lines)
+  manual.appendChild(page)
+  table.appendChild(manual)
+
+  stage.appendChild(table)
+  root.appendChild(stage)
+
+  const dom: ChoosingDom = { code, stage, cover, title, lines, page }
+  choosingScreens.set(root, dom)
+  return dom
+}
+
+/** Brings the box and the manual up to date, without disturbing either element. */
+function syncChoosing(dom: ChoosingDom, view: ChoosingView): void {
+  // Only actually written when it changes, so browsing back to a game
+  // already shown does not even touch the attribute, let alone the network.
+  if (dom.cover.getAttribute('src') !== view.cover) dom.cover.setAttribute('src', view.cover)
+
+  dom.title.textContent = view.title[SCREEN_LOCALE]
+
+  dom.lines.textContent = ''
+  for (const line of view.lines[SCREEN_LOCALE]) dom.lines.appendChild(element('p', 'm8-manual-line', line))
+
+  // 1-based for the room: `page` is the zero-based index the wire carries,
+  // the same one `clampPage` on the server produces.
+  dom.page.textContent = `${view.page + 1} of ${view.pageCount}`
 }
 
 function buildTable(root: HTMLElement, view: TvView): TableDom {
@@ -355,6 +466,29 @@ export function renderTable(root: HTMLElement, view: TvView): void {
   syncPeople(reusable && existing !== undefined ? existing : buildTable(root, view), view.participants)
 }
 
+/**
+ * The box on the left, the manual open beside it. Both are placed through
+ * the same scatter the code tiles and the QR use, so a box reads as
+ * something set down on the table rather than as a panel — see
+ * `buildChoosing` and `tilt.ts`.
+ *
+ * Reuses its tree exactly as `renderTable` reuses its own, and for the same
+ * two reasons: the cover `<img>` should not blink on every page turn, and
+ * the arrival animation nothing here has does not need re-triggering — but
+ * the *tree* still has to survive a `manualPage` tap without moving, which
+ * is what element reuse buys regardless.
+ */
+export function renderChoosing(root: HTMLElement, view: ChoosingView): void {
+  const existing = choosingScreens.get(root)
+  // A different code is a different table: a different scatter for both
+  // pieces. A detached stage means some other screen has cleared this root
+  // since, so there is nothing left to update.
+  const reusable =
+    existing !== undefined && existing.code === view.code && existing.stage.parentNode === root
+
+  syncChoosing(reusable && existing !== undefined ? existing : buildChoosing(root, view.code), view)
+}
+
 function renderMessage(root: HTMLElement, lines: readonly HTMLElement[]): void {
   root.textContent = ''
   const stage = element('div', 'm8-stage')
@@ -386,4 +520,60 @@ export function renderError(root: HTMLElement, code: ErrorCode): void {
     element('p', 'm8-message', 'Reload this screen.'),
     element('p', 'm8-code-line', code),
   ])
+}
+
+/**
+ * Chooses the screen for one `tableState` and draws it — the one place the
+ * wire's seven phases meet the screens this plan actually draws.
+ *
+ * Nothing in this plan can start a match, so `playing`, `paused`,
+ * `awaiting-seat` and `finished` can arrive on the wire but never really
+ * happen; they fall to the waiting screen the room already saw before the
+ * first `tableState` did. `seating` falls the same way for a different
+ * reason — it is drawn by the next plan, not this one. And `choosing-game`
+ * itself falls there too in the one instant nobody has previewed a game
+ * yet: the host has arrived but not tapped anything, `table.preview` is
+ * still `null`, and there is nothing this plan draws for that moment either.
+ *
+ * A `switch` that silently rendered nothing for a phase it had not met yet
+ * would leave a blank television with no way to tell why — the one failure
+ * this target cannot be debugged through — so every member of
+ * `TablePhaseName` is named below, and the `default` case fails to
+ * typecheck if a new one is ever added without a case naming it.
+ */
+export function renderScreen(root: HTMLElement, table: TableSnapshot, address: string): void {
+  switch (table.phase) {
+    case 'awaiting-host':
+      renderTable(root, { code: table.code, address, participants: table.participants })
+      return
+
+    case 'choosing-game':
+      if (table.preview === null) {
+        renderWaiting(root)
+        return
+      }
+      renderChoosing(root, {
+        code: table.code,
+        cover: table.preview.cover,
+        title: table.preview.title,
+        lines: table.preview.lines,
+        page: table.preview.page,
+        pageCount: table.preview.pageCount,
+      })
+      return
+
+    case 'seating':
+    case 'playing':
+    case 'paused':
+    case 'awaiting-seat':
+    case 'finished':
+      renderWaiting(root)
+      return
+
+    default: {
+      const unreachable: never = table.phase
+      renderWaiting(root)
+      return unreachable
+    }
+  }
 }
