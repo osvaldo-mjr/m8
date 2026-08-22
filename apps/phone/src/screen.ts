@@ -1,4 +1,4 @@
-import type { DeviceSnapshot, ErrorCode, TablePhaseName } from '@m8/protocol'
+import type { DeviceSnapshot, ErrorCode, ServerToClient, TablePhaseName } from '@m8/protocol'
 
 export type PhoneScreen =
   | { readonly kind: 'connecting' }
@@ -82,6 +82,82 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
 
 export function errorText(code: ErrorCode): string {
   return ERROR_TEXT[code]
+}
+
+/**
+ * What the person is told when one *action* was refused and nothing else was.
+ *
+ * A separate map from `ERROR_TEXT` rather than a second use of it, because
+ * every sentence there ends in "scan the code on the screen" — the right
+ * instruction for someone who has lost their place, and a lie to someone who
+ * has not. This device is still at the table, still holds whatever seat it
+ * held, and its next tap may well work; the line says what did not happen and
+ * gets out of the way.
+ *
+ * Total over `ErrorCode` for the same reason `ERROR_TEXT` is, including the
+ * codes no action can produce today: a code with no sentence would reach a
+ * display as a raw token, and which codes an action can carry is a property of
+ * the server, changeable without this file noticing.
+ */
+const ACTION_REFUSAL_TEXT: Record<ErrorCode, string> = {
+  'table-full': 'Every seat is taken.',
+  'not-allowed': 'That is not yours to do right now.',
+  'invalid-message': 'That did not go through. Try again.',
+  'unknown-table': 'This table is no longer open.',
+  'invalid-code': 'That is not a table.',
+  'table-unavailable': 'The table could not answer that.',
+  'stale-round': 'The table has moved on since then.',
+}
+
+export function actionRefusalText(code: ErrorCode): string {
+  return ACTION_REFUSAL_TEXT[code]
+}
+
+/**
+ * The two kinds of bad news a phone can be holding at once, kept apart.
+ *
+ * `session` ends this device at this table and replaces the whole screen;
+ * `action` is a line beside a screen that is still perfectly usable. They are
+ * separate fields rather than one because they are cleared by different
+ * things: a session error survives every state message and is lifted only by a
+ * fresh `welcome`, while a refused action is answered by the very next
+ * `deviceState` — that state *is* the answer to what the action asked.
+ */
+export interface PhoneErrorState {
+  readonly session: ErrorCode | null
+  readonly action: ErrorCode | null
+}
+
+export const NO_PHONE_ERRORS: PhoneErrorState = { session: null, action: null }
+
+/**
+ * Folds one server message into that pair. A pure function, so both kinds are
+ * testable without a socket, a component or a browser — which matters more
+ * here than usual: `App.tsx` latching every refusal for good is precisely the
+ * defect this replaces, and it was invisible because it lived in a component
+ * nothing in this repository can render.
+ */
+export function nextErrorState(current: PhoneErrorState, message: ServerToClient): PhoneErrorState {
+  switch (message.type) {
+    // The only message that means "you are at the table": the server restarting
+    // has every phone in the room greet a table that no longer exists and be
+    // told so, and whoever then scans the fresh code on the screen must land
+    // back at the table rather than stay parked on the failure before it.
+    case 'welcome':
+      return NO_PHONE_ERRORS
+    case 'error':
+      return { session: message.code, action: null }
+    case 'actionRefused':
+      return { session: current.session, action: message.code }
+    // Not `NO_PHONE_ERRORS`: a state message must never clear a session
+    // failure. A phone told its table is closed can still receive one — its
+    // socket is live and the server is running — and blinking the failure away
+    // would put a dead session back on screen as if nothing had happened.
+    case 'deviceState':
+      return { session: current.session, action: null }
+    default:
+      return current
+  }
 }
 
 /**

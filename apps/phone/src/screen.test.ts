@@ -1,6 +1,16 @@
 import type { DeviceSnapshot, ErrorCode, TablePhaseName } from '@m8/protocol'
 import { describe, expect, it } from 'vitest'
-import { START_NOT_YET_TEXT, determineScreen, errorText, startReasonText, waitingText } from './screen.js'
+import {
+  NO_PHONE_ERRORS,
+  START_NOT_YET_TEXT,
+  actionRefusalText,
+  determineScreen,
+  errorText,
+  nextErrorState,
+  startReasonText,
+  waitingText,
+  type PhoneErrorState,
+} from './screen.js'
 
 function device(overrides: Partial<DeviceSnapshot> = {}): DeviceSnapshot {
   return {
@@ -179,5 +189,100 @@ describe('waitingText', () => {
 
   it('says something different once the match is actually on than while still seating', () => {
     expect(waitingText('playing')).not.toBe(waitingText('seating'))
+  })
+})
+
+describe('nextErrorState', () => {
+  const clear: PhoneErrorState = { session: null, action: null }
+
+  it('starts with nothing to say', () => {
+    expect(NO_PHONE_ERRORS).toEqual(clear)
+  })
+
+  it('latches a refusal of the session, which is what ends this device at this table', () => {
+    expect(nextErrorState(clear, { type: 'error', code: 'unknown-table' })).toEqual({
+      session: 'unknown-table',
+      action: null,
+    })
+  })
+
+  it('keeps a session error through a device update, so it cannot be blinked away', () => {
+    // The path this guards: the server restarts, every phone in the room
+    // greets a table that no longer exists, and one stray state message must
+    // not put a dead session back on screen as if nothing happened.
+    const latched = nextErrorState(clear, { type: 'error', code: 'unknown-table' })
+    expect(nextErrorState(latched, { type: 'deviceState', device: device() })).toEqual(latched)
+  })
+
+  it('clears everything on a welcome, which is the one message that means "you are in"', () => {
+    const latched = nextErrorState(clear, { type: 'error', code: 'unknown-table' })
+    expect(nextErrorState(latched, { type: 'welcome', participantId: 'p1', token: 't1' })).toEqual(clear)
+  })
+
+  /**
+   * The defect this exists for: the host toggles PLAYING back on while both
+   * seats have since filled, and is refused. Latching that would take away his
+   * catalogue, his switch and his START with no way back but a reload — for a
+   * refusal that says nothing about his session at all.
+   */
+  it('shows a refused action beside the screen rather than in place of it', () => {
+    expect(nextErrorState(clear, { type: 'actionRefused', code: 'table-full' })).toEqual({
+      session: null,
+      action: 'table-full',
+    })
+  })
+
+  it('clears a refused action on the next device update, since that state is the answer', () => {
+    const refused = nextErrorState(clear, { type: 'actionRefused', code: 'table-full' })
+    expect(nextErrorState(refused, { type: 'deviceState', device: device() })).toEqual(clear)
+  })
+
+  it('replaces a refused action with the next one rather than stacking them', () => {
+    const first = nextErrorState(clear, { type: 'actionRefused', code: 'table-full' })
+    expect(nextErrorState(first, { type: 'actionRefused', code: 'not-allowed' })).toEqual({
+      session: null,
+      action: 'not-allowed',
+    })
+  })
+
+  it('drops a pending refusal when the session ends, since the screen is gone anyway', () => {
+    const refused = nextErrorState(clear, { type: 'actionRefused', code: 'table-full' })
+    expect(nextErrorState(refused, { type: 'error', code: 'unknown-table' })).toEqual({
+      session: 'unknown-table',
+      action: null,
+    })
+  })
+
+  it('leaves both alone for a message that is neither', () => {
+    const refused = nextErrorState(clear, { type: 'actionRefused', code: 'table-full' })
+    expect(nextErrorState(refused, { type: 'tableReady', code: 'ABCD' })).toEqual(refused)
+  })
+})
+
+describe('actionRefusalText', () => {
+  const codes: ErrorCode[] = [
+    'unknown-table',
+    'invalid-code',
+    'table-full',
+    'not-allowed',
+    'invalid-message',
+    'table-unavailable',
+    'stale-round',
+  ]
+
+  it('never tells the person to scan again, because they have not lost their place', () => {
+    for (const code of codes) {
+      expect(actionRefusalText(code)).not.toMatch(/scan the code/i)
+    }
+  })
+
+  it('never puts the wire code itself in front of a person', () => {
+    for (const code of codes) {
+      expect(actionRefusalText(code)).not.toContain(code)
+    }
+  })
+
+  it('says something different from the terminal sentence for the same code', () => {
+    expect(actionRefusalText('table-full')).not.toBe(errorText('table-full'))
   })
 })

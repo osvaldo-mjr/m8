@@ -3,7 +3,7 @@
  * not match is told to reload, which turns "the server was updated while a
  * phone held a stale page" from a phantom bug into a clear message.
  */
-export const PROTOCOL_VERSION = 2
+export const PROTOCOL_VERSION = 3
 
 /**
  * How many characters of a nickname the server keeps. Part of the wire
@@ -145,5 +145,24 @@ export type ServerToClient =
   | { readonly type: 'tableReady'; readonly code: string }
   | { readonly type: 'tableState'; readonly table: TableSnapshot }
   | { readonly type: 'deviceState'; readonly device: DeviceSnapshot }
+  /**
+   * The session is over as far as this device is concerned: it is not at the
+   * table, and nothing it sends next will be either. A client shows this and
+   * stops — the way back is scanning the code on the screen again.
+   */
   | { readonly type: 'error'; readonly code: ErrorCode }
+  /**
+   * One action did not happen. The device is still at the table, still holds
+   * whatever seat it held, and its next action may well succeed — a host who
+   * asks to sit down while both seats are taken is refused, not evicted.
+   *
+   * A separate message rather than a flag on `error` because the two are
+   * different events, not two shades of one: `error` ends a session and
+   * `actionRefused` ends nothing. Sharing a type invites a client to latch the
+   * refusal the way it must latch the failure, which is exactly the defect
+   * this split exists to close — a host stranded on "This table is full" with
+   * his catalogue, his PLAYING switch and his START gone, and no way back but
+   * a reload.
+   */
+  | { readonly type: 'actionRefused'; readonly code: ErrorCode }
   | { readonly type: 'reload'; readonly reason: 'protocol-version' }

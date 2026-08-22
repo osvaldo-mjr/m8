@@ -1,11 +1,20 @@
 import { AVATARS, avatarGlyph } from '@m8/avatars'
-import { NICKNAME_MAX_LENGTH, type DeviceSnapshot, type ErrorCode, type ServerToClient } from '@m8/protocol'
+import { NICKNAME_MAX_LENGTH, type DeviceSnapshot, type ServerToClient } from '@m8/protocol'
 import { PERSON_COLOR_PROPERTY, seatColor } from '@m8/tokens'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { codeFromLocation, connectPhone, type PhoneClient } from './client.js'
 import { PHONE_LOCALE, fetchCatalogue, searchCatalogue, type PhoneCatalogueEntry } from './catalogue.js'
 import { avatarTileClassName, describeProfileSubmission } from './profile.js'
-import { START_NOT_YET_TEXT, determineScreen, errorText, startReasonText, waitingText } from './screen.js'
+import {
+  NO_PHONE_ERRORS,
+  START_NOT_YET_TEXT,
+  actionRefusalText,
+  determineScreen,
+  errorText,
+  nextErrorState,
+  startReasonText,
+  waitingText,
+} from './screen.js'
 
 /**
  * The screen is themed in this person's own colour, which is the same colour
@@ -55,7 +64,12 @@ export function App() {
   const [manualPage, setManualPage] = useState(0)
 
   const [device, setDevice] = useState<DeviceSnapshot | null>(null)
-  const [error, setError] = useState<ErrorCode | null>(null)
+  // Two kinds of bad news, never one: a refusal of this device's session
+  // replaces the screen, a refusal of one action is a line beside it. Which
+  // is which is the server's answer, carried by the message type, and the
+  // folding of a message into this pair is `nextErrorState` — pure, so both
+  // kinds are tested without rendering anything.
+  const [errors, setErrors] = useState(NO_PHONE_ERRORS)
   // Whether an enabled START has been tapped this session, so the tap can
   // answer honestly (see START_NOT_YET_TEXT) instead of doing nothing. Not
   // reset on its own: once a host has been told, re-showing the same answer
@@ -80,15 +94,8 @@ export function App() {
   useEffect(() => {
     if (code === null) return
     const phoneClient = connectPhone(code, (message: ServerToClient) => {
-      if (message.type === 'welcome') {
-        // Cleared here, not left latched: the server restarting means every
-        // phone in the room greets a table that no longer exists and is told
-        // so. Whoever then scans the fresh code on the screen must land back
-        // at the table, not stay parked on the failure that preceded it.
-        setError(null)
-      }
+      setErrors((current) => nextErrorState(current, message))
       if (message.type === 'deviceState') setDevice(message.device)
-      if (message.type === 'error') setError(message.code)
     })
     client.current = phoneClient
 
@@ -119,8 +126,21 @@ export function App() {
     )
   }
 
-  const screen = determineScreen(device, hasProfile, previewedGameId, error)
+  const screen = determineScreen(device, hasProfile, previewedGameId, errors.session)
   const theme = personTheme(device)
+
+  /**
+   * One refused action, printed where the person can see it without losing
+   * the controls they were using. Rendered by the screens that can actually
+   * provoke a refusal; the profile form and the waiting screen send nothing
+   * that can be refused, so there is nothing for them to show.
+   */
+  const refusal =
+    errors.action === null ? null : (
+      <p className="mt-4 text-base" aria-live="polite">
+        {actionRefusalText(errors.action)}
+      </p>
+    )
 
   if (screen.kind === 'error') {
     return (
@@ -269,6 +289,8 @@ export function App() {
             </button>
           ))}
         </div>
+
+        {refusal}
       </Shell>
     )
   }
@@ -350,6 +372,8 @@ export function App() {
         >
           PLAY THIS
         </button>
+
+        {refusal}
       </Shell>
     )
   }
@@ -435,6 +459,8 @@ export function App() {
           </div>
         </div>
       )}
+
+      {refusal}
 
       <p className="mt-6 text-xl">Watch the big screen.</p>
     </Shell>

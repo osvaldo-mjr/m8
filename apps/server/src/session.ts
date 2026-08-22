@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, type ServerToClient } from '@m8/protocol'
+import { PROTOCOL_VERSION, type ErrorCode, type ServerToClient } from '@m8/protocol'
 import { parseInbound } from '@m8/protocol/validate'
 import type { Table, TableRegistry } from '@m8/core'
 import type { Connection, Transport } from '@m8/transport'
@@ -165,7 +165,7 @@ export class Session {
 
         const result = this.#registry.previewGame(attachment.code, attachment.participantId, message.gameId)
         if (result) {
-          connection.send({ type: 'error', code: translateError(result.error) })
+          this.#refuseAction(connection, translateError(result.error))
           return
         }
         this.#broadcastCode(attachment.code)
@@ -183,14 +183,14 @@ export class Session {
         const table = this.#registry.getTable(attachment.code)
         const manifest = table?.preview ? findManifest(table.preview.gameId) : undefined
         if (!manifest) {
-          connection.send({ type: 'error', code: 'not-allowed' })
+          this.#refuseAction(connection, 'not-allowed')
           return
         }
 
         const page = clampPage(message.page, manifestPageCount(manifest))
         const result = this.#registry.setPreviewPage(attachment.code, attachment.participantId, page)
         if (result) {
-          connection.send({ type: 'error', code: translateError(result.error) })
+          this.#refuseAction(connection, translateError(result.error))
           return
         }
         this.#broadcastCode(attachment.code)
@@ -208,7 +208,7 @@ export class Session {
         // a game that does not exist.
         const manifest = findManifest(message.gameId)
         if (!manifest) {
-          connection.send({ type: 'error', code: 'not-allowed' })
+          this.#refuseAction(connection, 'not-allowed')
           return
         }
 
@@ -221,7 +221,7 @@ export class Session {
         // phone's own `canChooseGame` check would make it a UI convention
         // rather than a guarantee the domain construction provides.
         if (manifest.status !== 'playable') {
-          connection.send({ type: 'error', code: 'not-allowed' })
+          this.#refuseAction(connection, 'not-allowed')
           return
         }
 
@@ -232,7 +232,7 @@ export class Session {
           manifest.seats,
         )
         if (result) {
-          connection.send({ type: 'error', code: translateError(result.error) })
+          this.#refuseAction(connection, translateError(result.error))
           return
         }
         this.#broadcastCode(attachment.code)
@@ -245,7 +245,7 @@ export class Session {
 
         const result = this.#registry.setHostPlaying(attachment.code, attachment.participantId, message.playing)
         if (result) {
-          connection.send({ type: 'error', code: translateError(result.error) })
+          this.#refuseAction(connection, translateError(result.error))
           return
         }
         this.#broadcastCode(attachment.code)
@@ -301,10 +301,38 @@ export class Session {
   }
 
   /**
+   * One action did not happen; the device is otherwise untouched.
+   *
+   * Distinct from the plain `error` every other refusal in this file sends,
+   * which says the device is not at the table at all. Everything the milestone
+   * refused before this plan was of that second kind — an unknown table, a
+   * stale round, a table with no room for another arrival — so one channel was
+   * enough. The four messages this plan added are sent by a device that is
+   * already seated at a live table, and can be refused for a reason that will
+   * not be true a moment later: a host asking to sit back down while both
+   * seats happen to be taken is refused, not evicted. Sending that down the
+   * terminal channel took his whole interface away for good.
+   *
+   * Which kind a refusal is, is the server's to say and not the phone's to
+   * infer: the server is the only party that knows whether it just declined an
+   * action or declined the session, and a phone guessing from the code alone
+   * gets it wrong in both directions — `table-full` ends a session at `hello`
+   * and ends nothing at `setHostPlaying`.
+   */
+  #refuseAction(connection: Connection, code: ErrorCode): void {
+    connection.send({ type: 'actionRefused', code })
+  }
+
+  /**
    * The phone attachment for `connection`, already sending the refusal and
    * returning `undefined` when there isn't one. Every catalogue-and-seats
    * message needs exactly the guard `setProfile` and `leave` already apply
    * inline, so it is named once here rather than repeated at each call site.
+   *
+   * The refusal here is terminal, not an `actionRefused`, and that is the
+   * right kind: reaching it means this connection never established a phone
+   * session at any table, so there is no session for a next action to succeed
+   * in. Nothing it sends will work until it greets a table again.
    */
   #phoneAttachment(
     connection: Connection,

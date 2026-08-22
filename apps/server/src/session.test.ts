@@ -380,7 +380,9 @@ describe('the catalogue and seats messages', () => {
 
     transport.receive('other', { type: 'previewGame', gameId: 'checkers' })
 
-    expect(transport.sentTo('other')).toContainEqual({ type: 'error', code: 'not-allowed' })
+    // Refused as an action, not as a session: this phone holds a seat and is
+    // still at the table, and only the thing it just asked for did not happen.
+    expect(transport.sentTo('other')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
     // chooseGame already cleared the preview; the refused call must not have
     // put a new one there.
     expect(registry.getTable(code)!.preview).toBeNull()
@@ -406,9 +408,10 @@ describe('the catalogue and seats messages', () => {
     transport.receive('host', { type: 'manualPage', page: 99 })
 
     expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 2 })
-    expect(transport.sentTo('host')).not.toContainEqual(
-      expect.objectContaining({ type: 'error' }),
-    )
+    // Neither kind of refusal: a clamp is not a refusal at all, so the
+    // phone is answered with state and nothing else.
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('error')
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('actionRefused')
   })
 
   it('clamps a manualPage below zero to the first page rather than erroring', () => {
@@ -450,7 +453,7 @@ describe('the catalogue and seats messages', () => {
     const table = registry.getTable(code)!
     expect(table.chosenGameId).toBeNull()
     expect(table.phase).toBe('choosing-game')
-    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'not-allowed' })
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
   })
 
   it('refuses chooseGame for a game whose manifest is coming-soon, leaving the table unchanged', () => {
@@ -468,7 +471,7 @@ describe('the catalogue and seats messages', () => {
     expect(table.chosenGameId).toBeNull()
     expect(table.seats).toHaveLength(0)
     expect(table.phase).toBe('choosing-game')
-    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'not-allowed' })
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
   })
 
   it('still allows previewing a coming-soon game — only choosing it is refused', () => {
@@ -478,9 +481,10 @@ describe('the catalogue and seats messages', () => {
     transport.receive('host', { type: 'previewGame', gameId: 'chess' })
 
     expect(registry.getTable(code)!.preview).toEqual({ gameId: 'chess', page: 0 })
-    expect(transport.sentTo('host')).not.toContainEqual(
-      expect.objectContaining({ type: 'error' }),
-    )
+    // Previewing one is allowed outright, so neither kind of refusal is
+    // sent: the phone is answered with state and nothing else.
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('error')
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('actionRefused')
   })
 
   it('refuses a phone joining before a game is chosen', () => {
@@ -523,10 +527,89 @@ describe('the catalogue and seats messages', () => {
 
     transport.receive('host', { type: 'previewGame', gameId: 'checkers' })
 
-    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'not-allowed' })
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
     // chooseGame already cleared the preview; a stray previewGame after
     // seating has opened must not put a new one there.
     expect(registry.getTable(code)!.preview).toBeNull()
+  })
+})
+
+/**
+ * A refusal of an *action* is not a refusal of the *session*.
+ *
+ * Everything this milestone refused before this plan ended a device's session:
+ * an unknown table, a stale round, a table with no room. This plan added four
+ * messages a device sends while already seated at a live table — previewGame,
+ * manualPage, chooseGame and setHostPlaying — and every one of them can be
+ * refused for a reason that will not be true a moment later. Sent down the same
+ * channel, one such refusal replaced the host's whole interface with a dead
+ * end: he toggles PLAYING back on while both seats have since filled, is told
+ * `table-full`, and loses the catalogue, the switch and START with no way back
+ * but a reload. The refusal is right; ending his session over it is not.
+ */
+describe('a refusal of an action rather than of the session', () => {
+  function openTable(): string {
+    transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    return firstOfType('tv', 'tableReady').code
+  }
+
+  function joinPhone(id: string, code: string): string {
+    transport.connect(id)
+    transport.receive(id, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    return firstOfType(id, 'welcome').participantId
+  }
+
+  /**
+   * The whole path, exactly as a room reaches it: the host chooses a game and
+   * is seated, steps out of his chair, two other phones take both seats, and
+   * he asks to sit back down.
+   */
+  it('refuses the host a seat that is gone without ending his session', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'chooseGame', gameId: 'tic-tac-toe' })
+    transport.receive('host', { type: 'setHostPlaying', playing: false })
+    joinPhone('second', code)
+    joinPhone('third', code)
+
+    transport.receive('host', { type: 'setHostPlaying', playing: true })
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'table-full' })
+    // Refused as an action and nothing more: no terminal error, so the
+    // host keeps his catalogue, his switch and his START.
+    expect(transport.sentTo('host').map((m) => m.type)).not.toContain('error')
+  })
+
+  it('refuses a manual page with nothing on preview as an action', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'manualPage', page: 1 })
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'actionRefused', code: 'not-allowed' })
+  })
+
+  /**
+   * The other direction, and the reason this is not simply "refusals are never
+   * terminal": a device that never established a session at this table has no
+   * action to refuse. The session is what is being refused, and the phone must
+   * stop rather than print a line and carry on as if it were seated.
+   */
+  it('still ends the session of a connection that never joined the table', () => {
+    openTable()
+    transport.connect('stranger')
+
+    transport.receive('stranger', { type: 'setHostPlaying', playing: true })
+
+    expect(transport.sentTo('stranger')).toContainEqual({ type: 'error', code: 'not-allowed' })
+  })
+
+  it('still ends the session of a phone that greets an unknown table', () => {
+    transport.connect('phone')
+    transport.receive('phone', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code: 'ZZZZ' })
+
+    expect(transport.sentTo('phone')).toContainEqual({ type: 'error', code: 'unknown-table' })
   })
 })
 
