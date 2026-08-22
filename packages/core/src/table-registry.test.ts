@@ -660,6 +660,19 @@ describe('previewing a game', () => {
 
     expect(registry.previewGame(code, other.id, 'checkers')).toEqual({ error: 'not-allowed' })
   })
+
+  it('is refused once a game is already chosen, even for the baton holder', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+
+    // chooseGame already cleared the preview. There is no path back to
+    // browsing from seating, the same rule chooseGame enforces against a
+    // second choice of its own.
+    expect(registry.previewGame(code, host.id, 'checkers')).toEqual({ error: 'not-allowed' })
+    expect(registry.getTable(code)!.preview).toBeNull()
+  })
 })
 
 describe('turning the manual page', () => {
@@ -691,6 +704,20 @@ describe('turning the manual page', () => {
   it('is refused on an unknown table', () => {
     const registry = makeRegistry()
     expect(registry.setPreviewPage('ZZZZ', 'nobody', 1)).toEqual({ error: 'unknown-table' })
+  })
+
+  it('is refused once a game is already chosen', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+
+    // Reachable only defensively: chooseGame already cleared the preview, so
+    // the 'nothing on preview' guard above would catch this on its own.
+    // This is the explicit rule stated anyway — mirroring chooseGame's own
+    // re-invocation guard — rather than left to hold only by coincidence
+    // with a different guard.
+    expect(registry.setPreviewPage(code, host.id, 1)).toEqual({ error: 'not-allowed' })
   })
 })
 

@@ -62,13 +62,26 @@ export function manifestPageCount(manifest: GameManifest): number {
 }
 
 /**
- * Confines `page` to `[0, pageCount - 1]`. Exported so `session.ts` can apply
- * the same rule to an incoming `manualPage` before it ever reaches core — the
- * one file both call, so the boundary cannot drift between where a page is
- * requested and where it is resolved.
+ * Confines `page` to a valid index into a manual of `pageCount` pages.
+ * Exported so `session.ts` can apply the same rule to an incoming
+ * `manualPage` before it ever reaches core — the one file both call, so the
+ * boundary cannot drift between where a page is requested and where it is
+ * resolved.
+ *
+ * Total for every finite `page` and every `pageCount`, including the two
+ * edges that would otherwise index past an array:
+ * - `pageCount <= 0` — a manual with no pages, which `manifestFaults`
+ *   rejects but this function does not get to assume; `0` is returned as a
+ *   value that is never actually used to index (the caller checks
+ *   `pageCount` first — see `translatePreview`).
+ * - a fractional `page` — the wire is expected to reject one before this is
+ *   ever called (see `validate.ts`), but this is the last line of defence
+ *   before `manifest.manual[locale][page]`, so it does not depend on that
+ *   guarantee holding three packages away.
  */
 export function clampPage(page: number, pageCount: number): number {
-  return Math.min(Math.max(page, 0), pageCount - 1)
+  if (pageCount <= 0) return 0
+  return Math.floor(Math.min(Math.max(page, 0), pageCount - 1))
 }
 
 /**
@@ -90,6 +103,11 @@ function translatePreview(
   if (!manifest) return null
 
   const count = manifestPageCount(manifest)
+  // A manifest with no pages at all has nothing to show; manifestFaults
+  // rejects one before it ever reaches a real catalogue, but this function
+  // does not depend on that holding — indexing manual[0] into an empty
+  // array is exactly as invalid as indexing manual[-1].
+  if (count <= 0) return null
   const page = clampPage(preview.page, count)
 
   return {

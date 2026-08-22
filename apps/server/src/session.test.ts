@@ -467,4 +467,31 @@ describe('the catalogue and seats messages', () => {
 
     expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'stale-round' })
   })
+
+  it('rejects a fractional manualPage instead of crashing the table', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+
+    expect(() => {
+      transport.receive('host', { type: 'manualPage', page: 1.5 })
+    }).not.toThrow()
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'invalid-message' })
+    // The malformed message must not have moved the page it could not resolve.
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 0 })
+  })
+
+  it('refuses previewGame from the baton holder once a game is already chosen', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'chooseGame', gameId: 'tic-tac-toe' })
+
+    transport.receive('host', { type: 'previewGame', gameId: 'checkers' })
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'not-allowed' })
+    // chooseGame already cleared the preview; a stray previewGame after
+    // seating has opened must not put a new one there.
+    expect(registry.getTable(code)!.preview).toBeNull()
+  })
 })

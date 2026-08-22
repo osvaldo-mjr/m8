@@ -67,12 +67,14 @@ export function parseInbound(raw: unknown): Inbound | null {
     }
 
     case 'manualPage': {
-      // Only the type is checked here, not the range. A page arrow held
-      // down is exactly what produces a value past either end, and the
-      // server clamps it rather than the wire refusing it — see
-      // apps/server/src/translate.ts:clampPage.
+      // The range is not checked here — a page arrow held down is exactly
+      // what produces a value past either end, and the server clamps that
+      // rather than the wire refusing it (see apps/server/src/translate.ts:
+      // clampPage). But the *type* is: nobody holding an arrow produces a
+      // fraction, so a non-integer is a malformed message, not a user
+      // action, and is refused the same as a non-number.
       const page = raw['page']
-      if (!isNumber(page)) return null
+      if (!isNumber(page) || !Number.isInteger(page)) return null
       return { type: 'manualPage', page }
     }
 

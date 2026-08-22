@@ -164,6 +164,24 @@ describe('translateTable', () => {
 
     expect(translateTable(view, [manifest()]).preview?.page).toBe(1)
   })
+
+  it('resolves to no preview rather than indexing into an empty manual', () => {
+    // manifestFaults rejects a manifest with an empty manual, so this
+    // should never reach the catalogue for real — but translatePreview
+    // must not depend on that guarantee holding three packages away.
+    const empty = manifest({ manual: { 'pt-BR': [], en: [] } })
+    const view: TableView = {
+      code: 'ABCD',
+      phase: 'choosing-game',
+      participants: [],
+      seats: [],
+      chosenGameId: null,
+      preview: { gameId: empty.id, page: 0 },
+      qrVisible: true,
+    }
+
+    expect(translateTable(view, [empty]).preview).toBeNull()
+  })
 })
 
 describe('translateDevice', () => {
@@ -201,6 +219,18 @@ describe('clampPage', () => {
 
   it('clamps a negative page to the first', () => {
     expect(clampPage(-5, 3)).toBe(0)
+  })
+
+  it('rounds a fractional page down to a valid index rather than returning one', () => {
+    // The wire is expected to reject a fractional page before this is ever
+    // called (see validate.ts), but clampPage must not depend on that
+    // guarantee holding three packages away: it is the last line of defence
+    // before an array index.
+    expect(clampPage(1.5, 3)).toBe(1)
+  })
+
+  it('is total: a manifest with no pages at all still yields a valid index', () => {
+    expect(clampPage(2, 0)).toBe(0)
   })
 })
 

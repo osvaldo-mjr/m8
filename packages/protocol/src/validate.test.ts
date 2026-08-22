@@ -155,6 +155,13 @@ describe('parseInbound', () => {
     expect(parseInbound(message)).toEqual(message)
   })
 
+  it('rejects manualPage with a fractional page', () => {
+    // Nobody holding an arrow down produces 1.5 — this is a malformed
+    // message, not a user action the server should clamp. Rejecting it here
+    // is what keeps a non-integer out of an array index downstream.
+    expect(parseInbound({ type: 'manualPage', page: 1.5 })).toBeNull()
+  })
+
   it('strips an unknown field from manualPage', () => {
     expect(parseInbound({ type: 'manualPage', page: 2, evil: 1 })).toEqual({
       type: 'manualPage',

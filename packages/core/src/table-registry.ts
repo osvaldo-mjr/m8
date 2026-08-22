@@ -182,7 +182,9 @@ export class TableRegistry {
 
   /**
    * Puts a game on the table for browsing, at its first page. Refused for
-   * anyone but the baton holder.
+   * anyone but the baton holder, and once more for anyone at all once a game
+   * is already chosen — there is no path back to browsing from seating, the
+   * same rule `chooseGame` itself enforces for a second choice.
    *
    * `gameId` is not checked against a catalogue here: `packages/core` may not
    * read one (invariant 1), so an id naming nothing is simply stored. It
@@ -197,6 +199,7 @@ export class TableRegistry {
     const table = this.#findMutable(code)
     if (!table) return { error: 'unknown-table' }
     if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+    if (table.chosenGameId !== null) return { error: 'not-allowed' }
 
     table.preview = { gameId, page: 0 }
     return undefined
@@ -204,10 +207,15 @@ export class TableRegistry {
 
   /**
    * Turns the page of whatever is currently on preview. Refused for anyone
-   * but the baton holder, and refused with nothing to turn when no game is
+   * but the baton holder, refused with nothing to turn when no game is
    * being previewed — a `manualPage` arriving after the box was cleared (a
    * choice already made, or a search resumed and abandoned) has nothing to
-   * act on.
+   * act on — and, explicitly, refused once a game is already chosen. That
+   * last guard is reachable only defensively today: `chooseGame` already
+   * clears `preview` to `null`, so the guard above it already refuses this
+   * case on its own. It is stated anyway, mirroring `previewGame`'s own
+   * guard, rather than left to hold only by coincidence with a different
+   * one.
    *
    * The page itself arrives already clamped: `packages/core` does not know
    * how many pages a manual has, only the server that read the manifest
@@ -221,6 +229,7 @@ export class TableRegistry {
     const table = this.#findMutable(code)
     if (!table) return { error: 'unknown-table' }
     if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+    if (table.chosenGameId !== null) return { error: 'not-allowed' }
     if (table.preview === null) return { error: 'not-allowed' }
 
     table.preview = { gameId: table.preview.gameId, page }
