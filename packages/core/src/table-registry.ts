@@ -358,10 +358,40 @@ export class TableRegistry {
     const successor = table.participants[0]
     if (successor) {
       table.batonHolderId = successor.id
-    } else {
-      table.batonHolderId = null
-      table.phase = 'awaiting-host'
+      return
     }
+
+    this.#empty(table)
+  }
+
+  /**
+   * Nobody is left, so the table becomes what a screen opens: no host, no
+   * game, no seats, nothing on preview.
+   *
+   * Setting only the phase and the baton would leave the game, its seats, its
+   * minimum and any preview behind on a table with nobody at it — and the next
+   * arrival would become host of a table that already had a game chosen.
+   * `canChooseGame` is `hasBaton && chosenGameId === null`, so that host could
+   * never choose anything: the catalogue would list every game with the choice
+   * refused, for good. The joining QR would show as well, since a chosen game
+   * with free seats is exactly when it does, inviting strangers to take seats
+   * for a game nobody picked.
+   *
+   * The round is deliberately not advanced. It exists to refuse a phone
+   * resuming a session the table has moved past, and nothing can be holding
+   * one here: a table only empties because every participant left, and leaving
+   * is deliberate — a disconnection removes nobody. The two actions that will
+   * advance it, "Clear seats" and "Change game", end a match other people are
+   * still sitting at, which is when a stale session is genuinely possible;
+   * both arrive with Plan 3, and so does the bump.
+   */
+  #empty(table: MutableTable): void {
+    table.batonHolderId = null
+    table.phase = 'awaiting-host'
+    table.chosenGameId = null
+    table.preview = null
+    table.seats = []
+    table.seatsMin = null
   }
 
   setProfile(code: string, participantId: string, nickname: string, avatarId: string): void {

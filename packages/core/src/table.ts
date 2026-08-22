@@ -32,10 +32,22 @@ export interface Table {
   readonly batonHolderId: string | null
   readonly createdAt: number
   /**
-   * Bumped whenever the table clears its seats. Handed to a phone as part of
-   * its session so a stale reconnection — a page left open in a pocket — can
-   * be told apart from someone scanning the code afresh. See
-   * `TableRegistry.joinParticipant`.
+   * Handed to a phone as part of its session so a stale reconnection — a page
+   * left open in a pocket — can be told apart from someone scanning the code
+   * afresh. A phone presenting a round the table has moved past is refused;
+   * see `TableRegistry.joinParticipant`.
+   *
+   * Nothing advances it yet, and this milestone contains nothing that could:
+   * it is meant to move when the table clears its seats, and the two actions
+   * that do that — "Clear seats" and "Change game" — end a match, which needs
+   * a match to end. Both arrive with Plan 3, and the bump arrives with them.
+   * Emptying the table by everybody leaving is deliberately not one of them
+   * (see `TableRegistry`'s own `#empty`): nobody can be holding a session for
+   * a table they all walked away from.
+   *
+   * The refusal itself is real and tested; what is missing is a way for the
+   * running application to provoke it, which is why the television checklist
+   * records the round marker as not yet checkable.
    */
   readonly round: number
   readonly chosenGameId: string | null

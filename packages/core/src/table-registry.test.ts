@@ -234,6 +234,96 @@ describe('TableRegistry.removeParticipant', () => {
     expect(table?.batonHolderId).toBeNull()
   })
 
+  /**
+   * The existing transition test above covers a table nobody had chosen a game
+   * at yet, which is why this was missed: everything a chosen game writes —
+   * the game itself, the seats, the minimum, the preview — was left behind on
+   * a table with nobody at it. The next arrival became host of a table that
+   * already had a game, and `canChooseGame` is `hasBaton && chosenGameId ===
+   * null`, so it was permanently false: the catalogue listed every game with
+   * PLAY THIS disabled and no way forward. Worse, a table with a game chosen
+   * and free seats shows the joining QR, so a screen sitting in
+   * `choosing-game` would have invited strangers in to take seats for a game
+   * nobody had chosen.
+   *
+   * So emptying a table means emptying it: what comes back is a table as fresh
+   * as the one the screen opened.
+   */
+  describe('when the last participant leaves a table that had chosen a game', () => {
+    function emptiedTable(): { registry: TableRegistry; code: string } {
+      const registry = makeRegistry()
+      const code = newTable(registry).code
+      const host = join(registry, code)
+      registry.chooseGame(code, host.id, 'tic-tac-toe', { min: 2, max: 2 })
+      registry.removeParticipant(code, host.id)
+      return { registry, code }
+    }
+
+    it('forgets the game, so the next host can choose one', () => {
+      const { registry, code } = emptiedTable()
+
+      expect(registry.getTable(code)?.chosenGameId).toBeNull()
+
+      const next = join(registry, code)
+      expect(registry.deviceView(registry.getTable(code)!, next.id).canChooseGame).toBe(true)
+      expect(registry.chooseGame(code, next.id, 'tic-tac-toe', { min: 2, max: 2 })).toBeUndefined()
+    })
+
+    it('forgets the seats the game sized, and the minimum it set', () => {
+      const { registry, code } = emptiedTable()
+
+      const table = registry.getTable(code)!
+      expect(table.seats).toEqual([])
+      expect(table.seatsMin).toBeNull()
+    })
+
+    it('forgets anything left on preview', () => {
+      const registry = makeRegistry()
+      const code = newTable(registry).code
+      const host = join(registry, code)
+      registry.previewGame(code, host.id, 'chess')
+
+      registry.removeParticipant(code, host.id)
+
+      expect(registry.getTable(code)?.preview).toBeNull()
+    })
+
+    it('stops showing the joining QR again the moment a new host is choosing', () => {
+      const { registry, code } = emptiedTable()
+
+      // Empty, so the QR is shown: the first arrival is exactly who it is for.
+      expect(registry.snapshot(registry.getTable(code)!).qrVisible).toBe(true)
+
+      join(registry, code)
+
+      // And gone again while that host chooses, which is the design's rule:
+      // between the first arrival and a chosen game, nobody else may join.
+      expect(registry.snapshot(registry.getTable(code)!).qrVisible).toBe(false)
+    })
+
+    /**
+     * Deliberately unchanged, and it is a real question.
+     *
+     * The round exists to refuse a phone resuming a session the table has
+     * moved past. Nothing can be holding such a session here: the only way to
+     * empty a table is for every participant to leave, and a phone that left
+     * is a phone that gave up its place deliberately. A disconnection does not
+     * remove anyone, so the pocket-phone case this guard is for cannot reach
+     * this path. Advancing the round here would refuse nobody and cost the one
+     * device that might legitimately come straight back.
+     *
+     * The two actions that are meant to advance it — "Clear seats" and "Change
+     * game" — end a match that other people are still sitting at, which is
+     * precisely when a stale session is possible. Both belong to Plan 3, and
+     * so does the bump.
+     */
+    it('does not advance the round, which nothing here could be stale against', () => {
+      const { registry, code } = emptiedTable()
+
+      expect(registry.getTable(code)?.round).toBe(1)
+    })
+  })
+
   it('leaves the baton untouched when a non-holder leaves', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
@@ -565,6 +655,33 @@ describe('the round marker', () => {
     const registry = makeRegistry()
     const table = newTable(registry)
     expect(registry.joinParticipant(table.code, undefined, 0)).toEqual({ error: 'stale-round' })
+  })
+
+  /**
+   * The claim `Table.round`'s own documentation now makes, pinned rather than
+   * asserted in prose: nothing this milestone can do moves it. It is meant to
+   * advance when the table clears its seats, and the two actions that clear
+   * them — "Clear seats" and "Change game" — end a match, which needs a match
+   * to end. Both belong to Plan 3. This is what fails if a bump is ever added
+   * without the trigger it belongs to, or the comment starts describing
+   * something the code does not do again.
+   */
+  it('never moves, because nothing in this milestone clears the seats', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.setProfile(code, host.id, 'Ana', AVATARS[0]!.id)
+    registry.previewGame(code, host.id, 'tic-tac-toe')
+    registry.setPreviewPage(code, host.id, 1)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', { min: 2, max: 2 })
+    const second = join(registry, code)
+    registry.setHostPlaying(code, host.id, false)
+    registry.setHostPlaying(code, host.id, true)
+    registry.disconnectParticipant(code, second.id)
+    registry.removeParticipant(code, second.id)
+    registry.removeParticipant(code, host.id)
+
+    expect(registry.getTable(code)?.round).toBe(1)
   })
 
   it('admits a phone presenting no round at all, which is a deliberate arrival', () => {
