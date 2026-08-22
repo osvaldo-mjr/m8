@@ -9,7 +9,7 @@ import { PERSON_COLOR_PROPERTY, seatColor } from '@m8/tokens'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { codeFromLocation, connectPhone, type PhoneClient } from './client.js'
 import { PHONE_LOCALE, clampManualPage, fetchCatalogue, searchCatalogue } from './catalogue.js'
-import { avatarTileClassName, describeProfileSubmission } from './profile.js'
+import { avatarTileClassName, describeProfileSubmission, primaryButtonClassName } from './profile.js'
 import {
   NO_PHONE_ERRORS,
   START_NOT_YET_TEXT,
@@ -225,16 +225,11 @@ export function App() {
             </div>
           </div>
 
-          {/* Disabled is drawn as an outline in this person's colour, not as
-              the same button faded out: a saturated colour at 40% over the
-              ground turns to mud, and mud is the one thing the palette is
-              not allowed to produce. */}
+          {/* One shape for every button in this app, enabled and disabled —
+              see `primaryButtonClassName`, which is also where the reason a
+              disabled button is outlined rather than faded is written down. */}
           <button
-            className={
-              submission.canSubmit
-                ? 'm8-person-bg m8-eyebrow rounded-2xl py-5 text-lg text-ink'
-                : 'm8-person-text m8-eyebrow rounded-2xl border-2 border-current py-5 text-lg'
-            }
+            className={primaryButtonClassName(submission.canSubmit)}
             type="submit"
             disabled={!submission.canSubmit}
           >
@@ -372,11 +367,7 @@ export function App() {
         <button
           type="button"
           disabled={!canPlay}
-          className={
-            canPlay
-              ? 'm8-person-bg m8-eyebrow rounded-2xl py-5 text-lg text-ink'
-              : 'm8-person-text m8-eyebrow rounded-2xl border-2 border-current py-5 text-lg'
-          }
+          className={primaryButtonClassName(canPlay)}
           onClick={() => client.current?.send({ type: 'chooseGame', gameId: entry.id })}
         >
           PLAY THIS
@@ -447,11 +438,7 @@ export function App() {
               type="button"
               disabled={!snapshot.canStart}
               onClick={() => setStartTapped(true)}
-              className={
-                snapshot.canStart
-                  ? 'm8-person-bg m8-eyebrow w-full rounded-2xl py-5 text-lg text-ink'
-                  : 'm8-person-text m8-eyebrow w-full rounded-2xl border-2 border-current py-5 text-lg'
-              }
+              className={primaryButtonClassName(snapshot.canStart, { fullWidth: true })}
             >
               START
             </button>
