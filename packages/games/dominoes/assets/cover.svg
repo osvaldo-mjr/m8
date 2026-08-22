@@ -1,26 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-  <!-- Colours are literal, not var(--m8-...): this file is fetched as an
-       image and renders outside the document, where custom properties do
-       not resolve. Values copied from packages/tokens/tokens.css. -->
-  <!-- box lid: --m8-table -->
-  <rect width="200" height="200" rx="16" fill="#945f35" />
-  <!-- the domino tile: --m8-paper, tilted for a bit of life -->
-  <g transform="rotate(-8 100 100)">
-    <rect x="60" y="34" width="80" height="132" rx="12" fill="#fff6ec" />
-    <!-- the seam between the two halves: --m8-plank-seam -->
-    <line x1="60" y1="100" x2="140" y2="100" stroke="#4a2e15" stroke-width="4" />
-    <!-- pips: --m8-ground -->
-    <g fill="#1c1614">
-      <!-- top half: three pips -->
-      <circle cx="80" cy="58" r="7" />
-      <circle cx="100" cy="78" r="7" />
-      <circle cx="120" cy="58" r="7" />
-      <!-- bottom half: five pips -->
-      <circle cx="80" cy="122" r="7" />
-      <circle cx="120" cy="122" r="7" />
-      <circle cx="100" cy="142" r="7" />
-      <circle cx="80" cy="162" r="7" />
-      <circle cx="120" cy="162" r="7" />
+  <!-- Colours are literal rather than custom properties: this file is
+       fetched as an image and renders outside the document, where a
+       var() reference resolves to nothing. Values copied from
+       packages/tokens/tokens.css, named without their leading dashes
+       because a pair of them is illegal inside an XML comment. -->
+
+  <!-- Lid: m8-paper -->
+  <rect width="200" height="200" fill="#fff6ec" />
+
+  <!-- One tile, tilted and running off both ends, at the angle a tile
+       lands at when somebody puts it down without looking. The other
+       three covers are square to the frame; this one is the reason the
+       shelf does not read as a set of icons. -->
+  <g transform="rotate(-14 100 100)">
+    <!-- Tile: m8-ground -->
+    <rect x="34" y="-16" width="132" height="232" rx="16" fill="#1c1614" />
+    <!-- Bar and pips: m8-paper -->
+    <rect x="34" y="94" width="132" height="12" fill="#fff6ec" />
+    <g fill="#fff6ec">
+      <circle cx="68" cy="26" r="14" />
+      <circle cx="132" cy="26" r="14" />
+      <circle cx="68" cy="64" r="14" />
+      <circle cx="132" cy="64" r="14" />
+      <circle cx="100" cy="150" r="14" />
     </g>
   </g>
 </svg>

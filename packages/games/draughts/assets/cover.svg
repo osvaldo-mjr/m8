@@ -1,38 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-  <!-- Colours are literal, not var(--m8-...): this file is fetched as an
-       image and renders outside the document, where custom properties do
-       not resolve. Values copied from packages/tokens/tokens.css. -->
-  <!-- box lid: --m8-table -->
-  <rect width="200" height="200" rx="16" fill="#945f35" />
-  <!-- chequerboard, 6x6, inset from the lid edge -->
-  <g>
-    <!-- light squares: --m8-paper -->
-    <!-- dark squares: --m8-plank-dark -->
-    <rect x="28" y="28" width="144" height="144" fill="#8d5b32" />
-    <g fill="#fff6ec">
-      <rect x="28" y="28" width="24" height="24" />
-      <rect x="76" y="28" width="24" height="24" />
-      <rect x="124" y="28" width="24" height="24" />
-      <rect x="52" y="52" width="24" height="24" />
-      <rect x="100" y="52" width="24" height="24" />
-      <rect x="148" y="52" width="24" height="24" />
-      <rect x="28" y="76" width="24" height="24" />
-      <rect x="76" y="76" width="24" height="24" />
-      <rect x="124" y="76" width="24" height="24" />
-      <rect x="52" y="100" width="24" height="24" />
-      <rect x="100" y="100" width="24" height="24" />
-      <rect x="148" y="100" width="24" height="24" />
-      <rect x="28" y="124" width="24" height="24" />
-      <rect x="76" y="124" width="24" height="24" />
-      <rect x="124" y="124" width="24" height="24" />
-      <rect x="52" y="148" width="24" height="24" />
-      <rect x="100" y="148" width="24" height="24" />
-      <rect x="148" y="148" width="24" height="24" />
-    </g>
+  <!-- Colours are literal rather than custom properties: this file is
+       fetched as an image and renders outside the document, where a
+       var() reference resolves to nothing. Values copied from
+       packages/tokens/tokens.css, named without their leading dashes
+       because a pair of them is illegal inside an XML comment. -->
+
+  <!-- Lid: m8-paper -->
+  <rect width="200" height="200" fill="#fff6ec" />
+
+  <!-- A wooden board, where chess gets the black-and-white one. -->
+  <!-- Dark squares: m8-table -->
+  <g fill="#945f35">
+    <rect x="0" y="0" width="50" height="50" />
+    <rect x="100" y="0" width="50" height="50" />
+    <rect x="50" y="50" width="50" height="50" />
+    <rect x="150" y="50" width="50" height="50" />
+    <rect x="0" y="100" width="50" height="50" />
+    <rect x="100" y="100" width="50" height="50" />
+    <rect x="50" y="150" width="50" height="50" />
+    <rect x="150" y="150" width="50" height="50" />
   </g>
-  <!-- draughts pieces, one per side: --m8-person-1 and --m8-person-8 -->
-  <circle cx="64" cy="64" r="15" fill="#ff5b4a" />
-  <circle cx="112" cy="64" r="15" fill="none" stroke="#ff5b4a" stroke-width="4" />
-  <circle cx="136" cy="136" r="15" fill="#4c8dff" />
-  <circle cx="88" cy="136" r="15" fill="none" stroke="#4c8dff" stroke-width="4" />
+
+  <!-- A crowned king: two discs stacked, which is the one shape chess
+       never makes. Stacking is what winning looks like in this game, so
+       the cover shows the end of a game rather than its setup. -->
+  <!-- Discs: m8-person-1, rimmed in m8-paper -->
+  <g fill="#ff5b4a" stroke="#fff6ec" stroke-width="8">
+    <ellipse cx="100" cy="140" rx="52" ry="30" />
+    <ellipse cx="100" cy="106" rx="52" ry="30" />
+  </g>
 </svg>

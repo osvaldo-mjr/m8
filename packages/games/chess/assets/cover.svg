@@ -1,37 +1,35 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-  <!-- Colours are literal, not var(--m8-...): this file is fetched as an
-       image and renders outside the document, where custom properties do
-       not resolve. Values copied from packages/tokens/tokens.css. -->
-  <!-- box lid: --m8-table -->
-  <rect width="200" height="200" rx="16" fill="#945f35" />
-  <!-- chequerboard, 6x6, inset from the lid edge -->
-  <g>
-    <!-- light squares: --m8-paper -->
-    <!-- dark squares: --m8-plank-dark -->
-    <rect x="28" y="28" width="144" height="144" fill="#8d5b32" />
-    <g fill="#fff6ec">
-      <rect x="28" y="28" width="24" height="24" />
-      <rect x="76" y="28" width="24" height="24" />
-      <rect x="124" y="28" width="24" height="24" />
-      <rect x="52" y="52" width="24" height="24" />
-      <rect x="100" y="52" width="24" height="24" />
-      <rect x="148" y="52" width="24" height="24" />
-      <rect x="28" y="76" width="24" height="24" />
-      <rect x="76" y="76" width="24" height="24" />
-      <rect x="124" y="76" width="24" height="24" />
-      <rect x="52" y="100" width="24" height="24" />
-      <rect x="100" y="100" width="24" height="24" />
-      <rect x="148" y="100" width="24" height="24" />
-      <rect x="28" y="124" width="24" height="24" />
-      <rect x="76" y="124" width="24" height="24" />
-      <rect x="124" y="124" width="24" height="24" />
-      <rect x="52" y="148" width="24" height="24" />
-      <rect x="100" y="148" width="24" height="24" />
-      <rect x="148" y="148" width="24" height="24" />
-    </g>
+  <!-- Colours are literal rather than custom properties: this file is
+       fetched as an image and renders outside the document, where a
+       var() reference resolves to nothing. Values copied from
+       packages/tokens/tokens.css, named without their leading dashes
+       because a pair of them is illegal inside an XML comment. -->
+
+  <!-- Lid: m8-paper -->
+  <rect width="200" height="200" fill="#fff6ec" />
+
+  <!-- Chess and draughts share a board, so the board cannot be what tells
+       them apart. This one is the black-and-white field; draughts gets a
+       wooden one. The piece does the rest: a pawn here, a stacked king
+       there — one silhouette that is never the other. -->
+  <!-- Dark squares: m8-plank-seam -->
+  <g fill="#4a2e15">
+    <rect x="0" y="0" width="50" height="50" />
+    <rect x="100" y="0" width="50" height="50" />
+    <rect x="50" y="50" width="50" height="50" />
+    <rect x="150" y="50" width="50" height="50" />
+    <rect x="0" y="100" width="50" height="50" />
+    <rect x="100" y="100" width="50" height="50" />
+    <rect x="50" y="150" width="50" height="50" />
+    <rect x="150" y="150" width="50" height="50" />
   </g>
-  <!-- king silhouette: --m8-alarm -->
-  <path
-    d="M100 60 v-14 m-6 6 h12 M84 130 q16 -14 32 0 v14 h-32 z M92 96 q8 -10 16 0 q8 10 -8 20 q-16 -10 -8 -20 z"
-    fill="none" stroke="#ffbfad" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- One pawn, oversized and running off the bottom edge, so it reads at
+       a thumbnail's size. Paper filled with an ink outline, so it holds
+       its shape across both colours of square. -->
+  <g fill="#fff6ec" stroke="#4a2e15" stroke-width="9" stroke-linejoin="round">
+    <path d="M 74 200 L 82 128 L 118 128 L 126 200 Z" />
+    <rect x="74" y="112" width="52" height="18" rx="6" />
+    <circle cx="100" cy="82" r="26" />
+  </g>
 </svg>

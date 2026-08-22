@@ -316,9 +316,13 @@ export function App() {
       <Shell style={theme}>
         <p className="m8-eyebrow text-sm">TABLE {code}</p>
 
+        {/* Pulled left by its own padding so the label still lines up with
+            everything above it, while the tappable box runs to the edge of
+            the screen. A thumb aims at the words and misses a control the
+            size of the words. */}
         <button
           type="button"
-          className="m8-eyebrow mt-6 self-start text-xs"
+          className="m8-eyebrow -ml-3 mt-4 flex min-h-12 items-center self-start px-3 text-sm"
           onClick={() => setPreviewedGameId(null)}
         >
           ‹ BACK TO THE LIST
@@ -336,11 +340,15 @@ export function App() {
               server clamps too but never says so, so a phone that counted
               past the last page would spend the overshoot on taps that turn
               nothing. */}
-          <div className="mt-8 flex items-center gap-8">
+          {/* A chevron is a few pixels of ink, and a bare glyph is a target
+              the width of that ink. These are drawn as the controls they are
+              — a 64px box with a visible edge — so a thumb has something to
+              aim at and something to see respond. */}
+          <div className="mt-8 flex items-center gap-10">
             <button
               type="button"
               aria-label="Previous page"
-              className="text-4xl"
+              className="m8-person-text flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-current pb-1 text-4xl"
               onClick={() => {
                 const next = clampManualPage(manualPage - 1, entry.pageCount)
                 setManualPage(next)
@@ -352,7 +360,7 @@ export function App() {
             <button
               type="button"
               aria-label="Next page"
-              className="text-4xl"
+              className="m8-person-text flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-current pb-1 text-4xl"
               onClick={() => {
                 const next = clampManualPage(manualPage + 1, entry.pageCount)
                 setManualPage(next)

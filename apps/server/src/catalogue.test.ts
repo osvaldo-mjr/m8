@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type { GameManifest } from '@m8/contract'
 import { manifestFaults } from '@m8/contract'
 import { describe, expect, it } from 'vitest'
 import { CATALOGUE, GAME_ASSET_ROOTS, catalogueForPhone, findManifest } from './catalogue.js'
@@ -73,6 +74,11 @@ describe('catalogueForPhone', () => {
   })
 })
 
+/** A cover exactly as a screen receives it. */
+function coverSource(manifest: GameManifest): string {
+  return readFileSync(join(GAME_ASSET_ROOTS.get(manifest.id)!, manifest.cover), 'utf8')
+}
+
 describe('the asset roots', () => {
   it('gives every catalogued game a directory to serve', () => {
     for (const manifest of CATALOGUE) {
@@ -82,19 +88,34 @@ describe('the asset roots', () => {
 
   it('gives every cover a size it can be drawn at', () => {
     // An SVG carrying only a `viewBox` has no intrinsic size, and an `<img>`
-    // asked to draw one paints nothing on the television's Chromium. All
-    // four covers shipped that way and were invisible on both screens on the
-    // first real run — the files served, with a 200 and the right type, and
-    // simply did not appear. Serving correctly is not the same as being
-    // drawable, so this asserts the second thing rather than trusting the
-    // first.
+    // asked to draw one can paint nothing on the television's Chromium.
     for (const manifest of CATALOGUE) {
-      const root = GAME_ASSET_ROOTS.get(manifest.id)!
-      const source = readFileSync(join(root, manifest.cover), 'utf8')
-      const tag = /<svg[^>]*>/.exec(source)?.[0] ?? ''
+      const tag = /<svg[^>]*>/.exec(coverSource(manifest))?.[0] ?? ''
       expect({ id: manifest.id, sized: /\swidth="/.test(tag) && /\sheight="/.test(tag) }).toEqual({
         id: manifest.id,
         sized: true,
+      })
+    }
+  })
+
+  // Whether a cover is XML a browser can parse at all is checked in
+  // `scripts/game-cover-svg.test.ts`, which needs a real DOM to answer it and
+  // therefore cannot live in this file: the browser environment breaks the
+  // `import.meta.url` the game packages derive their asset roots from.
+
+  it('never gives a cover the colour of the surface it is set down on', () => {
+    // A cover is drawn on the wooden table on the television and on a
+    // table-coloured row on the phone. The first set filled its whole lid
+    // with `--m8-table` itself, so even once they parsed they would have
+    // been a square of exactly the background behind them.
+    const surfaces = ['#945f35', '#9b6437', '#8d5b32']
+    for (const manifest of CATALOGUE) {
+      const lid = /<rect[^>]*width="200"[^>]*height="200"[^>]*>/.exec(coverSource(manifest))?.[0] ?? ''
+      const fill = /fill="(#[0-9a-fA-F]{6})"/.exec(lid)?.[1]?.toLowerCase() ?? null
+      expect({ id: manifest.id, lid: fill, onASurface: surfaces.includes(fill ?? '') }).toEqual({
+        id: manifest.id,
+        lid: fill,
+        onASurface: false,
       })
     }
   })

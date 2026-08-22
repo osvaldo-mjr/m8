@@ -1,26 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-  <!-- Colours are literal, not var(--m8-...): this file is fetched as an
-       image and renders outside the document, where custom properties do
-       not resolve. Values copied from packages/tokens/tokens.css. -->
-  <!-- box lid: --m8-table -->
-  <rect width="200" height="200" rx="16" fill="#945f35" />
-  <!-- grid lines: --m8-paper -->
-  <g stroke="#fff6ec" stroke-width="8" stroke-linecap="round">
-    <line x1="76" y1="36" x2="76" y2="164" />
-    <line x1="124" y1="36" x2="124" y2="164" />
-    <line x1="36" y1="76" x2="164" y2="76" />
-    <line x1="36" y1="124" x2="164" y2="124" />
+  <!-- Colours are literal rather than custom properties: this file is
+       fetched as an image and renders outside the document, where a
+       var() reference resolves to nothing. Values copied from
+       packages/tokens/tokens.css, named here without their leading
+       dashes because a pair of them is illegal inside an XML comment
+       and makes the whole file unparseable. The first set of covers
+       named the tokens in full and rendered as nothing at all, on both
+       screens, while serving perfectly. -->
+
+  <!-- Lid: m8-paper. A cover is paper, like every other piece on this
+       table. The first set used m8-table for the lid, the colour of the
+       surface a box is set down on. A box is an object on the wood. -->
+  <rect width="200" height="200" fill="#fff6ec" />
+
+  <!-- The grid runs off all four edges rather than sitting centred with a
+       margin. Cropped, it fills the 64px thumbnail the phone lists with;
+       centred, it would shrink to a smudge. -->
+  <!-- Grid: m8-plank-seam -->
+  <g stroke="#4a2e15" stroke-width="12" stroke-linecap="square">
+    <line x1="70" y1="-10" x2="70" y2="210" />
+    <line x1="130" y1="-10" x2="130" y2="210" />
+    <line x1="-10" y1="70" x2="210" y2="70" />
+    <line x1="-10" y1="130" x2="210" y2="130" />
   </g>
-  <!-- X mark: --m8-person-1 -->
-  <g stroke="#ff5b4a" stroke-width="9" stroke-linecap="round">
-    <line x1="46" y1="46" x2="66" y2="66" />
-    <line x1="66" y1="46" x2="46" y2="66" />
+
+  <!-- The two marks wear the two seat colours this game seats, so a cover
+       already carries the colours its players will. -->
+  <!-- X: m8-person-1 -->
+  <g stroke="#ff5b4a" stroke-width="14" stroke-linecap="round">
+    <line x1="22" y1="22" x2="48" y2="48" />
+    <line x1="48" y1="22" x2="22" y2="48" />
   </g>
-  <!-- O mark: --m8-person-8 -->
-  <circle cx="150" cy="100" r="14" fill="none" stroke="#4c8dff" stroke-width="9" />
-  <!-- X mark: --m8-person-1 -->
-  <g stroke="#ff5b4a" stroke-width="9" stroke-linecap="round">
-    <line x1="94" y1="144" x2="114" y2="164" />
-    <line x1="114" y1="144" x2="94" y2="164" />
+  <!-- O: m8-person-8 -->
+  <circle cx="100" cy="100" r="17" fill="none" stroke="#4c8dff" stroke-width="14" />
+  <!-- X: m8-person-1 -->
+  <g stroke="#ff5b4a" stroke-width="14" stroke-linecap="round">
+    <line x1="152" y1="152" x2="178" y2="178" />
+    <line x1="178" y1="152" x2="152" y2="178" />
   </g>
 </svg>
