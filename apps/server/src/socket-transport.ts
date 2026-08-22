@@ -69,11 +69,10 @@ export interface SocketIoTransportOptions {
  */
 export class SocketIoTransport implements Transport {
   readonly #io: SocketServer
+  readonly #onFault: FaultReporter
   #onConnect: (connection: Connection) => void = () => {}
   #onMessage: (connection: Connection, raw: unknown) => void = () => {}
   #onDisconnect: (connection: Connection) => void = () => {}
-
-  readonly #onFault: FaultReporter
 
   constructor(httpServer: HttpServer, options: SocketIoTransportOptions) {
     const { onNegotiation, onFault } = options
@@ -163,7 +162,27 @@ export class SocketIoTransport implements Transport {
         messageType: messageTypeOf(raw),
         error: toError(thrown),
       })
-      connection.send({ type: 'error', code: 'invalid-message' })
+      this.#reply(connection, { type: 'error', code: 'invalid-message' })
+    }
+  }
+
+  /**
+   * The answer to a fault, sent with a guard of its own. Nothing here may
+   * throw: this runs inside the catch block above, and a throw from it would
+   * escape to exactly the place the catch exists to keep clear. The reasoning
+   * that made this catch necessary — do not assume the library contains what
+   * it does not — applies to the reply as much as to the handling.
+   */
+  #reply(connection: Connection, message: ServerToClient): void {
+    try {
+      connection.send(message)
+    } catch (thrown) {
+      this.#onFault({
+        connectionId: connection.id,
+        stage: 'sending',
+        messageType: message.type,
+        error: toError(thrown),
+      })
     }
   }
 

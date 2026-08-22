@@ -1,6 +1,19 @@
 import type { Locale, PhoneCatalogueEntry } from '@m8/protocol'
 
 /**
+ * The phone's half of the game catalogue: how it is fetched, how it is
+ * searched, and how far its manual arrows may travel.
+ *
+ * The entry shape itself is not declared here. It is the wire's
+ * (`@m8/protocol`'s `PhoneCatalogueEntry`), imported by this file and by the
+ * one function on the server that builds the body — so there is no second copy
+ * of it for the two ends to drift apart on. What is deliberately absent from
+ * that shape is the manual: the rules are read from the large screen by the
+ * whole room, and a device that never receives the text cannot break that
+ * later.
+ */
+
+/**
  * Confines a page to a manual of `pageCount` pages, so the arrows on this
  * device cannot count past either end of it.
  *

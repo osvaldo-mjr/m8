@@ -367,13 +367,13 @@ export class Session {
       if (!connection) continue
 
       if (attachment.role === 'screen') {
-        this.#deliver(connection, tableMessage)
+        this.#sendTo(connection, tableMessage)
         continue
       }
 
       if (attachment.participantId === undefined) continue
       const deviceView = this.#registry.deviceView(table, attachment.participantId)
-      this.#deliver(connection, { type: 'deviceState', device: translateDevice(deviceView) })
+      this.#sendTo(connection, { type: 'deviceState', device: translateDevice(deviceView) })
     }
   }
 
@@ -392,7 +392,7 @@ export class Session {
    * not silent: this is the only trace that one device in the room stopped
    * being told anything.
    */
-  #deliver(connection: Connection, message: ServerToClient): void {
+  #sendTo(connection: Connection, message: ServerToClient): void {
     try {
       connection.send(message)
     } catch (thrown) {
