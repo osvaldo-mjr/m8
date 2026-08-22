@@ -1,7 +1,31 @@
-import type { DomainError, ParticipantView, TableView } from '@m8/core'
+import type { GameManifest } from '@m8/contract'
+import type { DeviceView, DomainError, ParticipantView, TableView } from '@m8/core'
 import type { ErrorCode } from '@m8/protocol'
 import { describe, expect, it } from 'vitest'
-import { translateError, translateParticipant, translateTable } from './translate.js'
+import { clampPage, translateDevice, translateError, translateParticipant, translateTable } from './translate.js'
+
+function manifest(overrides: Partial<GameManifest> = {}): GameManifest {
+  return {
+    id: 'tic-tac-toe',
+    contractVersion: 1,
+    seats: { min: 2, max: 2 },
+    name: { 'pt-BR': 'Jogo da velha', en: 'Tic-tac-toe' },
+    tagline: { 'pt-BR': 'Três em linha', en: 'Three in a row' },
+    manual: {
+      'pt-BR': [
+        { title: 'Página um', lines: ['Primeira linha'] },
+        { title: 'Página dois', lines: ['Segunda linha'] },
+      ],
+      en: [
+        { title: 'Page one', lines: ['First line'] },
+        { title: 'Page two', lines: ['Second line'] },
+      ],
+    },
+    cover: 'cover.svg',
+    status: 'playable',
+    ...overrides,
+  }
+}
 
 describe('translateParticipant', () => {
   it('carries every field across, field by field', () => {
@@ -38,7 +62,7 @@ describe('translateTable', () => {
       qrVisible: false,
     }
 
-    expect(translateTable(view)).toEqual({
+    expect(translateTable(view, [])).toEqual({
       code: 'ABCD',
       phase: 'choosing-game',
       participants: [
@@ -61,7 +85,7 @@ describe('translateTable', () => {
       preview: null,
       qrVisible: true,
     }
-    expect(translateTable(view)).toEqual({
+    expect(translateTable(view, [])).toEqual({
       code: 'ABCD',
       phase: 'awaiting-host',
       participants: [],
@@ -85,10 +109,98 @@ describe('translateTable', () => {
       qrVisible: false,
     }
 
-    expect(translateTable(view).seats).toEqual([
+    expect(translateTable(view, []).seats).toEqual([
       { number: 0, occupant: { id: 'p-1', nickname: 'Ana', avatarId: 'fox', connected: true, hasBaton: true } },
       { number: 1, occupant: null },
     ])
+  })
+
+  it('resolves a preview to its cover, name and current page', () => {
+    const view: TableView = {
+      code: 'ABCD',
+      phase: 'choosing-game',
+      participants: [],
+      seats: [],
+      chosenGameId: null,
+      preview: { gameId: 'tic-tac-toe', page: 1 },
+      qrVisible: true,
+    }
+
+    expect(translateTable(view, [manifest()]).preview).toEqual({
+      gameId: 'tic-tac-toe',
+      cover: '/covers/tic-tac-toe/cover.svg',
+      name: { 'pt-BR': 'Jogo da velha', en: 'Tic-tac-toe' },
+      page: 1,
+      pageCount: 2,
+      title: { 'pt-BR': 'Página dois', en: 'Page two' },
+      lines: { 'pt-BR': ['Segunda linha'], en: ['Second line'] },
+    })
+  })
+
+  it('resolves to no preview when the previewed game has left the catalogue', () => {
+    const view: TableView = {
+      code: 'ABCD',
+      phase: 'choosing-game',
+      participants: [],
+      seats: [],
+      chosenGameId: null,
+      preview: { gameId: 'withdrawn', page: 0 },
+      qrVisible: true,
+    }
+
+    expect(translateTable(view, [manifest()]).preview).toBeNull()
+  })
+
+  it('clamps a stored page beyond the manifest it now resolves against', () => {
+    const view: TableView = {
+      code: 'ABCD',
+      phase: 'choosing-game',
+      participants: [],
+      seats: [],
+      chosenGameId: null,
+      preview: { gameId: 'tic-tac-toe', page: 99 },
+      qrVisible: true,
+    }
+
+    expect(translateTable(view, [manifest()]).preview?.page).toBe(1)
+  })
+})
+
+describe('translateDevice', () => {
+  it('carries every field across, field by field', () => {
+    const view: DeviceView = {
+      participantId: 'p-1',
+      phase: 'seating',
+      seatNumber: 1,
+      hasBaton: true,
+      canChooseGame: false,
+      canStart: false,
+      playersNeeded: 1,
+    }
+
+    expect(translateDevice(view)).toEqual({
+      participantId: 'p-1',
+      phase: 'seating',
+      seatNumber: 1,
+      hasBaton: true,
+      canChooseGame: false,
+      canStart: false,
+      playersNeeded: 1,
+    })
+  })
+})
+
+describe('clampPage', () => {
+  it('passes a page already inside range through unchanged', () => {
+    expect(clampPage(1, 3)).toBe(1)
+  })
+
+  it('clamps a page beyond the last to the last', () => {
+    expect(clampPage(99, 3)).toBe(2)
+  })
+
+  it('clamps a negative page to the first', () => {
+    expect(clampPage(-5, 3)).toBe(0)
   })
 })
 

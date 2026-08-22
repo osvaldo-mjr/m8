@@ -67,8 +67,12 @@ export function parseInbound(raw: unknown): Inbound | null {
     }
 
     case 'manualPage': {
+      // Only the type is checked here, not the range. A page arrow held
+      // down is exactly what produces a value past either end, and the
+      // server clamps it rather than the wire refusing it — see
+      // apps/server/src/translate.ts:clampPage.
       const page = raw['page']
-      if (!isNumber(page) || page < 0) return null
+      if (!isNumber(page)) return null
       return { type: 'manualPage', page }
     }
 

@@ -325,3 +325,146 @@ describe('one connection speaks for one participant', () => {
     expect(table?.batonHolderId).toBe(table?.participants[0]?.id)
   })
 })
+
+describe('the catalogue and seats messages', () => {
+  function openTable(): string {
+    transport.connect('tv')
+    transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
+    return firstOfType('tv', 'tableReady').code
+  }
+
+  function joinPhone(id: string, code: string): string {
+    transport.connect(id)
+    transport.receive(id, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    return firstOfType(id, 'welcome').participantId
+  }
+
+  it('sends the screen a tableState and never a deviceState', () => {
+    openTable()
+
+    const types = transport.sentTo('tv').map((m) => m.type)
+    expect(types).toContain('tableState')
+    expect(types).not.toContain('deviceState')
+  })
+
+  it('sends a phone a deviceState and never a tableState', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    // Asserting on the message *types* the fake transport recorded, not on
+    // any payload's contents: this is what would fail if a filtered table
+    // were ever built for a phone, whatever shape it took.
+    const types = transport.sentTo('host').map((m) => m.type)
+    expect(types).toContain('deviceState')
+    expect(types).not.toContain('tableState')
+  })
+
+  it('lets the baton holder put a preview on the table', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 0 })
+  })
+
+  it('refuses previewGame from a seated participant who does not hold the baton', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'chooseGame', gameId: 'tic-tac-toe' })
+    joinPhone('other', code)
+
+    transport.receive('other', { type: 'previewGame', gameId: 'checkers' })
+
+    expect(transport.sentTo('other')).toContainEqual({ type: 'error', code: 'not-allowed' })
+    // chooseGame already cleared the preview; the refused call must not have
+    // put a new one there.
+    expect(registry.getTable(code)!.preview).toBeNull()
+  })
+
+  it('moves the preview page within range', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+
+    transport.receive('host', { type: 'manualPage', page: 1 })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 1 })
+  })
+
+  it('clamps a manualPage beyond the last page rather than erroring', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+
+    // tic-tac-toe's manual carries three pages in each locale: index 2 is
+    // the last.
+    transport.receive('host', { type: 'manualPage', page: 99 })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 2 })
+    expect(transport.sentTo('host')).not.toContainEqual(
+      expect.objectContaining({ type: 'error' }),
+    )
+  })
+
+  it('clamps a manualPage below zero to the first page rather than erroring', () => {
+    const code = openTable()
+    joinPhone('host', code)
+    transport.receive('host', { type: 'previewGame', gameId: 'tic-tac-toe' })
+    transport.receive('host', { type: 'manualPage', page: 1 })
+
+    transport.receive('host', { type: 'manualPage', page: -5 })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 0 })
+  })
+
+  it('creates seats via chooseGame and tells every device', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'chooseGame', gameId: 'tic-tac-toe' })
+
+    const table = registry.getTable(code)!
+    expect(table.phase).toBe('seating')
+    expect(table.seats).toHaveLength(2)
+
+    const hostDeviceMessages = transport.sentTo('host').filter((m) => m.type === 'deviceState')
+    const latestHostDevice = hostDeviceMessages[hostDeviceMessages.length - 1]
+    expect(latestHostDevice?.type === 'deviceState' && latestHostDevice.device.seatNumber).toBe(1)
+
+    const screenStates = transport.sentTo('tv').filter((m) => m.type === 'tableState')
+    const latestScreen = screenStates[screenStates.length - 1]
+    expect(latestScreen?.type === 'tableState' && latestScreen.table.seats).toHaveLength(2)
+  })
+
+  it('refuses chooseGame naming a game outside the catalogue, leaving the table unchanged', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'chooseGame', gameId: 'backgammon' })
+
+    const table = registry.getTable(code)!
+    expect(table.chosenGameId).toBeNull()
+    expect(table.phase).toBe('choosing-game')
+    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'not-allowed' })
+  })
+
+  it('refuses a phone joining before a game is chosen', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.connect('second')
+    transport.receive('second', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+
+    expect(transport.sentTo('second')).toContainEqual({ type: 'error', code: 'not-allowed' })
+  })
+
+  it('refuses a phone presenting a stale round', () => {
+    const code = openTable()
+
+    transport.connect('host')
+    transport.receive('host', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code, round: 0 })
+
+    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'stale-round' })
+  })
+})

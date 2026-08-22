@@ -2,7 +2,8 @@ import { PROTOCOL_VERSION, type ServerToClient } from '@m8/protocol'
 import { parseInbound } from '@m8/protocol/validate'
 import type { Table, TableRegistry } from '@m8/core'
 import type { Connection, Transport } from '@m8/transport'
-import { translateError, translateTable } from './translate.js'
+import { CATALOGUE, findManifest } from './catalogue.js'
+import { clampPage, manifestPageCount, translateDevice, translateError, translateTable } from './translate.js'
 
 interface Attachment {
   readonly role: 'screen' | 'phone'
@@ -108,7 +109,7 @@ export class Session {
           connection.send({ type: 'reload', reason: 'protocol-version' })
           return
         }
-        const result = this.#registry.joinParticipant(message.code, message.token)
+        const result = this.#registry.joinParticipant(message.code, message.token, message.round)
         if ('error' in result) {
           connection.send({ type: 'error', code: translateError(result.error) })
           return
@@ -155,16 +156,85 @@ export class Session {
         return
       }
 
-      // The catalogue and seats these four name are on the wire as of this
-      // task, but handling them is the next task's job. Refusing rather than
-      // silently accepting keeps a client that sends one today honest about
-      // what the server actually did with it.
-      case 'previewGame':
-      case 'manualPage':
-      case 'chooseGame':
-      case 'setHostPlaying':
-        connection.send({ type: 'error', code: 'not-allowed' })
+      case 'previewGame': {
+        const attachment = this.#phoneAttachment(connection)
+        if (!attachment) return
+
+        const result = this.#registry.previewGame(attachment.code, attachment.participantId, message.gameId)
+        if (result) {
+          connection.send({ type: 'error', code: translateError(result.error) })
+          return
+        }
+        this.#broadcastCode(attachment.code)
         return
+      }
+
+      case 'manualPage': {
+        const attachment = this.#phoneAttachment(connection)
+        if (!attachment) return
+
+        // The manifest of whatever is currently on preview, not of the
+        // message: `manualPage` carries only a page number, so how many
+        // pages exist is read from the table's own preview, not from the
+        // request.
+        const table = this.#registry.getTable(attachment.code)
+        const manifest = table?.preview ? findManifest(table.preview.gameId) : undefined
+        if (!manifest) {
+          connection.send({ type: 'error', code: 'not-allowed' })
+          return
+        }
+
+        const page = clampPage(message.page, manifestPageCount(manifest))
+        const result = this.#registry.setPreviewPage(attachment.code, attachment.participantId, page)
+        if (result) {
+          connection.send({ type: 'error', code: translateError(result.error) })
+          return
+        }
+        this.#broadcastCode(attachment.code)
+        return
+      }
+
+      case 'chooseGame': {
+        const attachment = this.#phoneAttachment(connection)
+        if (!attachment) return
+
+        // A gameId naming nothing in the catalogue is refused here and the
+        // table is left untouched — the same reasoning `previewGame` and
+        // `translatePreview` apply the other way around, except a choice,
+        // unlike a preview, commits real seats and must not commit them to
+        // a game that does not exist.
+        const manifest = findManifest(message.gameId)
+        if (!manifest) {
+          connection.send({ type: 'error', code: 'not-allowed' })
+          return
+        }
+
+        const result = this.#registry.chooseGame(
+          attachment.code,
+          attachment.participantId,
+          message.gameId,
+          manifest.seats,
+        )
+        if (result) {
+          connection.send({ type: 'error', code: translateError(result.error) })
+          return
+        }
+        this.#broadcastCode(attachment.code)
+        return
+      }
+
+      case 'setHostPlaying': {
+        const attachment = this.#phoneAttachment(connection)
+        if (!attachment) return
+
+        const result = this.#registry.setHostPlaying(attachment.code, attachment.participantId, message.playing)
+        if (result) {
+          connection.send({ type: 'error', code: translateError(result.error) })
+          return
+        }
+        this.#broadcastCode(attachment.code)
+        return
+      }
 
       default: {
         // Exhaustiveness guard: parseInbound only ever returns one of the
@@ -214,18 +284,52 @@ export class Session {
     }
   }
 
+  /**
+   * The phone attachment for `connection`, already sending the refusal and
+   * returning `undefined` when there isn't one. Every catalogue-and-seats
+   * message needs exactly the guard `setProfile` and `leave` already apply
+   * inline, so it is named once here rather than repeated at each call site.
+   */
+  #phoneAttachment(
+    connection: Connection,
+  ): { readonly code: string; readonly participantId: string } | undefined {
+    const attachment = this.#attachments.get(connection.id)
+    if (!attachment || attachment.role !== 'phone' || attachment.participantId === undefined) {
+      connection.send({ type: 'error', code: 'not-allowed' })
+      return undefined
+    }
+    return { code: attachment.code, participantId: attachment.participantId }
+  }
+
   #broadcastCode(code: string): void {
     const table = this.#registry.getTable(code)
     if (table) this.#broadcast(table)
   }
 
+  /**
+   * The screen attachment for a table receives the table, translated once
+   * and shared; every phone attachment receives its own `DeviceView`,
+   * translated and sent to nobody else. There is no code path in which a
+   * phone's branch ever touches `tableMessage` — the guarantee that a phone
+   * never receives the table holds by construction, not by discipline.
+   */
   #broadcast(table: Table): void {
-    const view = this.#registry.snapshot(table)
-    const message: ServerToClient = { type: 'tableState', table: translateTable(view) }
+    const tableView = this.#registry.snapshot(table)
+    const tableMessage: ServerToClient = { type: 'tableState', table: translateTable(tableView, CATALOGUE) }
 
     for (const [connectionId, attachment] of this.#attachments) {
       if (attachment.code !== table.code) continue
-      this.#connections.get(connectionId)?.send(message)
+      const connection = this.#connections.get(connectionId)
+      if (!connection) continue
+
+      if (attachment.role === 'screen') {
+        connection.send(tableMessage)
+        continue
+      }
+
+      if (attachment.participantId === undefined) continue
+      const deviceView = this.#registry.deviceView(table, attachment.participantId)
+      connection.send({ type: 'deviceState', device: translateDevice(deviceView) })
     }
   }
 }

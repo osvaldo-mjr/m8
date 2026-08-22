@@ -146,8 +146,13 @@ describe('parseInbound', () => {
     expect(parseInbound({ type: 'manualPage', page: '2' })).toBeNull()
   })
 
-  it('rejects manualPage with a negative page', () => {
-    expect(parseInbound({ type: 'manualPage', page: -1 })).toBeNull()
+  it('accepts manualPage with a negative page, leaving the clamp to the server', () => {
+    // A stepper held past the first page is exactly the arrow-mashing this
+    // message exists for; the server clamps it rather than the wire
+    // rejecting it, so a page arrow stops at the edge instead of raising an
+    // error on the television. See apps/server/src/translate.ts:clampPage.
+    const message = { type: 'manualPage', page: -1 }
+    expect(parseInbound(message)).toEqual(message)
   })
 
   it('strips an unknown field from manualPage', () => {

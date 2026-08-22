@@ -238,6 +238,34 @@ describe('the real Socket.IO transport', () => {
     )
     expect(unknownTable).toEqual({ type: 'error', code: 'unknown-table' })
   })
+
+  it('sends both phones a deviceState, and neither a tableState, once the host chooses a game', async () => {
+    const { code } = await openTable()
+
+    const host = connect()
+    await waitForConnect(host.socket)
+    host.socket.emit(CHANNEL, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    await waitForType(host.messages, 'welcome')
+
+    host.socket.emit(CHANNEL, { type: 'chooseGame', gameId: 'tic-tac-toe' })
+    // Seating is now open: a second phone may join for real, the same way a
+    // second player's phone would once the box on the screen shows seats.
+    await waitForType(host.messages, 'deviceState')
+
+    const second = connect()
+    await waitForConnect(second.socket)
+    second.socket.emit(CHANNEL, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+    await waitForType(second.messages, 'welcome')
+    await waitForType(second.messages, 'deviceState')
+
+    // The message *types* each phone received over the real transport, not
+    // the contents of any one of them: this is the assertion that would fail
+    // if a filtered table were ever built for a phone, whatever shape it took.
+    expect(host.messages.map((m) => m.type)).not.toContain('tableState')
+    expect(second.messages.map((m) => m.type)).not.toContain('tableState')
+    expect(host.messages.map((m) => m.type)).toContain('deviceState')
+    expect(second.messages.map((m) => m.type)).toContain('deviceState')
+  })
 })
 
 describe('the negotiated transport', () => {

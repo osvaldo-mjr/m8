@@ -625,6 +625,75 @@ describe('TableRegistry code exhaustion', () => {
 
 const TIC_TAC_TOE = { min: 2, max: 2 }
 
+describe('previewing a game', () => {
+  it('puts the game on the table at its first page, for the baton holder', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.previewGame(code, host.id, 'tic-tac-toe')
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 0 })
+  })
+
+  it('is refused for anyone without the baton, and leaves the table unchanged', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    join(registry, code)
+    expect(registry.previewGame(code, 'not-the-host', 'tic-tac-toe')).toEqual({
+      error: 'not-allowed',
+    })
+    expect(registry.getTable(code)!.preview).toBeNull()
+  })
+
+  it('is refused on an unknown table', () => {
+    const registry = makeRegistry()
+    expect(registry.previewGame('ZZZZ', 'nobody', 'tic-tac-toe')).toEqual({
+      error: 'unknown-table',
+    })
+  })
+
+  it('is refused for a seated participant who is not the baton holder', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const other = join(registry, code)
+
+    expect(registry.previewGame(code, other.id, 'checkers')).toEqual({ error: 'not-allowed' })
+  })
+})
+
+describe('turning the manual page', () => {
+  it('moves the page of the game currently on preview', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.previewGame(code, host.id, 'tic-tac-toe')
+    registry.setPreviewPage(code, host.id, 2)
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 2 })
+  })
+
+  it('is refused for anyone without the baton', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.previewGame(code, host.id, 'tic-tac-toe')
+    expect(registry.setPreviewPage(code, 'not-the-host', 2)).toEqual({ error: 'not-allowed' })
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'tic-tac-toe', page: 0 })
+  })
+
+  it('is refused when nothing is on preview', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    expect(registry.setPreviewPage(code, host.id, 1)).toEqual({ error: 'not-allowed' })
+  })
+
+  it('is refused on an unknown table', () => {
+    const registry = makeRegistry()
+    expect(registry.setPreviewPage('ZZZZ', 'nobody', 1)).toEqual({ error: 'unknown-table' })
+  })
+})
+
 describe('choosing a game', () => {
   it('is refused for anyone without the baton', () => {
     const registry = makeRegistry()

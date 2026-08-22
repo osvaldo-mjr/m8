@@ -181,6 +181,53 @@ export class TableRegistry {
   }
 
   /**
+   * Puts a game on the table for browsing, at its first page. Refused for
+   * anyone but the baton holder.
+   *
+   * `gameId` is not checked against a catalogue here: `packages/core` may not
+   * read one (invariant 1), so an id naming nothing is simply stored. It
+   * resolves to no preview at all when the server translates the table,
+   * which is the one place that can tell a real id from a withdrawn one.
+   */
+  previewGame(
+    code: string,
+    participantId: string,
+    gameId: string,
+  ): { readonly error: DomainError } | undefined {
+    const table = this.#findMutable(code)
+    if (!table) return { error: 'unknown-table' }
+    if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+
+    table.preview = { gameId, page: 0 }
+    return undefined
+  }
+
+  /**
+   * Turns the page of whatever is currently on preview. Refused for anyone
+   * but the baton holder, and refused with nothing to turn when no game is
+   * being previewed — a `manualPage` arriving after the box was cleared (a
+   * choice already made, or a search resumed and abandoned) has nothing to
+   * act on.
+   *
+   * The page itself arrives already clamped: `packages/core` does not know
+   * how many pages a manual has, only the server that read the manifest
+   * does.
+   */
+  setPreviewPage(
+    code: string,
+    participantId: string,
+    page: number,
+  ): { readonly error: DomainError } | undefined {
+    const table = this.#findMutable(code)
+    if (!table) return { error: 'unknown-table' }
+    if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+    if (table.preview === null) return { error: 'not-allowed' }
+
+    table.preview = { gameId: table.preview.gameId, page }
+    return undefined
+  }
+
+  /**
    * The host stepping out of their seat and back into it. The switch starts
    * on, because chooseGame already seated him. Stepping back in claims
    * whatever seat is free, not necessarily the one he left — a chair, not a
