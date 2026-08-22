@@ -320,14 +320,28 @@ img {
 }
 
 /*
- * The baton holder's badge, on `renderSeating`. Sized to sit inside the
- * eyebrow row's own height — never taller than `.m8-wordmark`, which is what
- * the row's height actually is — so marking him costs no space beyond what
- * the row already has. Set in `--m8-font-text` rather than the expanded
- * black face `.m8-eyebrow` uses: a nickname nobody chose from a controlled
- * alphabet sits on this line, and that face cannot render one safely.
+ * The baton holder's badge, on `renderSeating`. Set in `--m8-font-text`
+ * rather than the expanded black face `.m8-eyebrow` uses: a nickname nobody
+ * chose from a controlled alphabet sits on this line, and that face cannot
+ * render one safely.
+ *
+ * Content-independent the same way `.m8-chip-name` is, and for the same
+ * reason: this line carries a nickname up to `NICKNAME_MAX_LENGTH` (16)
+ * characters, plus a fixed label and an avatar glyph, none of which this
+ * stylesheet controls. `white-space: nowrap` is what stops a long badge
+ * wrapping to a second line and growing the eyebrow row past the height
+ * `scripts/tv-safe-area.test.ts` charges for it; `max-width` with
+ * `overflow: hidden` and `text-overflow: ellipsis` is what stops it
+ * reaching sideways past the row instead. Together they make the badge's
+ * box a function of the row alone, never of what anybody typed — which is
+ * what lets `scripts/tv-safe-area.ts` model it at all, the same trade its
+ * own top comment makes for the row of chips.
  */
 .m8-host {
+  max-width: 50%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--m8-font-text);
   font-size: var(--m8-eyebrow-type);
   line-height: 1;

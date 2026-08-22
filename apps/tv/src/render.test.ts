@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { AVATARS } from '@m8/avatars'
-import type { ParticipantSnapshot, PreviewSnapshot, SeatSnapshot, TableSnapshot } from '@m8/protocol'
+import { NICKNAME_MAX_LENGTH, type ParticipantSnapshot, type PreviewSnapshot, type SeatSnapshot, type TableSnapshot } from '@m8/protocol'
 import { seatColor } from '@m8/tokens'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -429,6 +429,25 @@ describe('the colour of the row before any seat exists', () => {
     renderTable(root, { code: 'KXTP', address: ADDRESS, participants: three })
     expect(colorOf(chips()[0] as HTMLElement)).toBe(first)
   })
+
+  it('still shifts a survivor one colour along when somebody ahead of them leaves', () => {
+    // Deliberately unguarded against the bug this whole task removes: this
+    // row is coloured by array position, the same mechanism `personColor`
+    // used to be. That is safe only because nobody may join before a game is
+    // chosen (spec 3.1), so the row this function actually draws never holds
+    // more than the host alone — the departure below cannot happen for real.
+    // Pinned anyway, so a later reader who "fixes" this row in place, without
+    // reading that it is unreachable, gets a red test rather than a silent
+    // reintroduction of the bug `renderSeating` was built to remove.
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: three })
+    const thirdBefore = colorOf(chips()[2] as HTMLElement)
+
+    const withoutAna = [three[1], three[2]] as ParticipantSnapshot[]
+    renderTable(root, { code: 'KXTP', address: ADDRESS, participants: withoutAna })
+
+    expect(colorOf(chips()[1] as HTMLElement)).not.toBe(thirdBefore)
+    expect(colorOf(chips()[1] as HTMLElement)).toBe(seatColor(2))
+  })
 })
 
 describe('the row of people, redrawn', () => {
@@ -802,6 +821,20 @@ describe('renderSeating', () => {
     expect(root.textContent).toContain('Duda')
     // Not seated: the only chip in the row belongs to whoever actually is.
     expect(chips()).toHaveLength(1)
+  })
+
+  it('draws the badge for the longest nickname a player can actually submit', () => {
+    // NICKNAME_MAX_LENGTH is the wire's own ceiling (`@m8/protocol`) — the
+    // longest string that ever reaches this badge for real, not a
+    // hypothetical. jsdom computes no layout, so this cannot prove a pixel
+    // width; what makes that length safe regardless — a bounded, truncating
+    // box rather than one that grows with its content — is `.m8-host` in
+    // `styles.css`, proven in `scripts/tv-safe-area.test.ts`. This proves
+    // the other half: the screen still renders it, whole, without throwing.
+    const longest = 'A'.repeat(NICKNAME_MAX_LENGTH)
+    const host = participant({ id: 'p-host', nickname: longest, hasBaton: true })
+    renderSeating(root, view({ seats: [seat({ number: 1 })], batonHolder: host }))
+    expect(root.textContent).toContain(longest)
   })
 
   it('names nobody when there happens to be no baton holder to mark', () => {

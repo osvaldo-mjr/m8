@@ -535,7 +535,10 @@ function syncPeople(dom: TableDom, participants: readonly ParticipantSnapshot[])
     // No seat exists yet at this phase — nobody may join before a game is
     // chosen, so this row is the host alone — so the row's own position is
     // the only thing to colour by, one-based to match how `seatColor` names
-    // its slots.
+    // its slots. That position still shifts a survivor's colour if this were
+    // ever fed more than one participant — pinned deliberately, rather than
+    // left silently unguarded, in render.test.ts's "still shifts a survivor
+    // one colour along when somebody ahead of them leaves".
     updateChip(chip, person, seatColor(index + 1))
     previous = chip
   }
@@ -576,6 +579,10 @@ export function renderTable(root: HTMLElement, view: TvView): void {
  * handled by leaving the badge blank rather than by throwing, because a
  * table drawn with one missing label is a smaller failure on a television
  * than a blank screen.
+ *
+ * The badge's own box never grows with what is written into it — see
+ * `.m8-host` in `styles.css` — which is what lets `scripts/tv-safe-area.ts`
+ * charge a fixed height for it regardless of nickname length.
  */
 function updateHost(host: HTMLElement, batonHolder: ParticipantSnapshot | null): void {
   if (batonHolder === null) {

@@ -421,9 +421,22 @@ describe('the screen at every number of people the table holds', () => {
       return layout + (tiltOverhang(tileSize, degrees) + tileLift) * 2
     }
 
-    function stageFor(participants: number, degrees: number = maxTiltDegrees) {
+    /**
+     * `eyebrowHeight` defaults to the wordmark's own height, which is right
+     * for every screen whose eyebrow row carries nothing taller — the join
+     * screen's `.m8-eyebrow` is a fixed, short string. `renderSeating`'s row
+     * carries one more thing, `.m8-host` (the baton badge), whose own
+     * font-size could in principle exceed the wordmark's; the sweep below
+     * for that screen passes the taller of the two explicitly rather than
+     * relying on this default.
+     */
+    function stageFor(
+      participants: number,
+      degrees: number = maxTiltDegrees,
+      eyebrowHeight: number = pixels(sizes, '--m8-wordmark-type'),
+    ) {
       return {
-        eyebrowHeight: pixels(sizes, '--m8-wordmark-type'),
+        eyebrowHeight,
         tableGap: pixels(sizes, '--m8-row-gap'),
         // The whole element: what lies on it at its most scattered, and the
         // band along its lower edge, which is inside its box and is not
@@ -441,6 +454,24 @@ describe('the screen at every number of people the table holds', () => {
 
     it.each(counts)('keeps %i people inside the safe area', (participants) => {
       expect(overscanPixels(stageFor(participants), safe.height)).toBeLessThanOrEqual(0)
+    })
+
+    /**
+     * The claim Ruling 2 in the task report rested on prose alone until now:
+     * that `renderSeating`'s eyebrow row — wordmark plus `.m8-host` — never
+     * needs more height than `stageFor` already charges for the join
+     * screen's plain wordmark row. `.m8-eyebrow-row` uses
+     * `align-items: baseline`, so the row's actual height is whichever of
+     * its two children is taller; `--m8-eyebrow-type` (the badge's
+     * font-size) happens to be smaller than `--m8-wordmark-type` at both
+     * tiers today, but "happens to be" is exactly the kind of guarantee this
+     * repository has learned not to leave to a comment. This computes the
+     * taller of the two explicitly and sweeps the worst case — every seat
+     * occupied, the code and QR at their most scattered — against it.
+     */
+    it('keeps a full table of seats inside the safe area with the baton badge charged for', () => {
+      const eyebrowHeight = Math.max(pixels(sizes, '--m8-wordmark-type'), pixels(sizes, '--m8-eyebrow-type'))
+      expect(overscanPixels(stageFor(MAX_SEATS, maxTiltDegrees, eyebrowHeight), safe.height)).toBeLessThanOrEqual(0)
     })
 
     it.each(tiltMagnitudes)('leaves the table room for the QR it carries, turned %s degrees', (degrees) => {
@@ -715,11 +746,24 @@ describe('the screen at every number of people the table holds', () => {
       )
     })
 
-    it.each(['.m8-chip-name', '.m8-chip-note'])('truncates %s rather than widening', (selector) => {
+    it.each(['.m8-chip-name', '.m8-chip-note', '.m8-host'])('truncates %s rather than widening', (selector) => {
       const body = rule(styles, selector)
       expect(declaration(body, 'overflow')).toBe('hidden')
       expect(declaration(body, 'text-overflow')).toBe('ellipsis')
       expect(declaration(body, 'white-space')).toBe('nowrap')
+    })
+
+    it('bounds the baton badge to a fraction of the row, so it cannot reach past it', () => {
+      // `.m8-host` carries a nickname up to `NICKNAME_MAX_LENGTH` (16, in
+      // `@m8/protocol`) plus a label and a glyph, none of which this
+      // stylesheet controls — the truncation above is what makes that safe,
+      // and `max-width` is the other half: without it, `overflow: hidden`
+      // alone clips nothing, because the box would still grow to fit its
+      // content before anything inside it was measured against a limit.
+      const body = rule(styles, '.m8-host')
+      const width = percent(body, 'max-width')
+      expect(width).toBeGreaterThan(0)
+      expect(width).toBeLessThan(100)
     })
 
     it('fixes the manual at a declared size and clips anything that will not fit', () => {
