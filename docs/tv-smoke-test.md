@@ -238,6 +238,40 @@ redesigning the platform.
 
 ## Results
 
+### 2026-08-22 — Samsung (model and year still pending) — PASSED, after three defects
+
+Steps 17 to 21, the catalogue and the seats, on the real set with two phones.
+The owner ran them and all pass.
+
+They did not pass on the first attempt. Three defects were found on hardware,
+none of which any of the 949 automated tests could see, and all three are the
+same shape: something that was true of the code but not of the screen.
+
+1. **Filling the last seat took the whole table away.** The seating screen built
+   its wooden surface inside the branch that draws the QR, so the last arrival
+   removed the table along with the invitation to join it and left the chips on
+   the bare floor. Every test this screen had asked whether the QR was on the
+   table; none asked whether the table was.
+2. **No cover ever appeared, on either screen.** Each one named its colour
+   tokens in full inside an XML comment, where a pair of dashes is illegal, so
+   every cover was discarded whole by the parser. They fetched perfectly — a
+   200, the right content type, the right bytes, requested by both screens — and
+   were drawn by neither. Nothing here had looked at a cover as anything but a
+   file, so nothing could tell arriving from rendering. A second defect sat
+   underneath: every lid was painted `--m8-table`, the colour of the surface it
+   is set down on, so even parsed they would have been invisible.
+3. **The page arrows and the back control could not be hit.** A bare chevron is
+   a target the width of its own ink. The owner reported needing two taps; there
+   was no double-tap bug — the screen changes synchronously — the first tap was
+   landing on nothing.
+
+Each is now guarded: a test that the table survives the last seat, a test that
+parses every cover the way a browser does, and a test that refuses a lid painted
+in any of the wood tones.
+
+**Observed, not fixed:** nothing new. The stretched-table note below still
+stands.
+
 ### 2026-08-21 — Samsung (model and year still pending) — PASSED, with one observation
 
 The room round on real hardware: floor, wooden table, lamp pool and directional
