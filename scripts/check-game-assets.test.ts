@@ -19,7 +19,7 @@ describe('the declared budget', () => {
     unknown
   >
   const guardSource = readFileSync(join(repoRoot, 'scripts', 'check-game-assets.mjs'), 'utf8')
-  const BUDGET_KEY = 'gameAssetBytes'
+  const BUDGET_KEY = 'gameAssetRawBytes'
 
   it('declares it under the key the guard reads', () => {
     expect(guardSource).toContain(`const BUDGET_KEY = '${BUDGET_KEY}'`)

@@ -46,7 +46,7 @@ function gamePackages(gamesRoot) {
 }
 
 /** The key `budget.json` declares this ceiling under. */
-const BUDGET_KEY = 'gameAssetBytes'
+const BUDGET_KEY = 'gameAssetRawBytes'
 
 /**
  * The ceiling, normally from `budget.json`.
