@@ -1,4 +1,11 @@
-export type TablePhase = 'awaiting-host' | 'choosing-game'
+export type TablePhase =
+  | 'awaiting-host'
+  | 'choosing-game'
+  | 'seating'
+  | 'playing'
+  | 'paused'
+  | 'awaiting-seat'
+  | 'finished'
 
 /**
  * The public shape of a participant. The registry keeps its own mutable
@@ -22,4 +29,13 @@ export interface Table {
   /** The participant holding control of the session. Transferable. */
   readonly batonHolderId: string | null
   readonly createdAt: number
+  /**
+   * Bumped whenever the table clears its seats. Handed to a phone as part of
+   * its session so a stale reconnection — a page left open in a pocket — can
+   * be told apart from someone scanning the code afresh. See
+   * `TableRegistry.joinParticipant`.
+   */
+  readonly round: number
+  readonly chosenGameId: string | null
+  readonly preview: { readonly gameId: string; readonly page: number } | null
 }

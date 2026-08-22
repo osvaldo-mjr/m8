@@ -61,6 +61,7 @@ describe('translateError', () => {
     'table-full': 'table-full',
     'not-allowed': 'not-allowed',
     'table-unavailable': 'table-unavailable',
+    'stale-round': 'stale-round',
   }
 
   for (const [domainError, errorCode] of Object.entries(cases) as [DomainError, ErrorCode][]) {

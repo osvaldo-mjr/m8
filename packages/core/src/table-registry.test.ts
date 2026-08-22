@@ -549,6 +549,33 @@ describe('TableRegistry capacity', () => {
   })
 })
 
+describe('the round marker', () => {
+  it('starts at one', () => {
+    const registry = makeRegistry()
+    expect(newTable(registry).round).toBe(1)
+  })
+
+  it('admits a phone presenting the current round', () => {
+    const registry = makeRegistry()
+    const table = newTable(registry)
+    const result = registry.joinParticipant(table.code, undefined, table.round)
+    expect('error' in result).toBe(false)
+  })
+
+  it('refuses a phone presenting a stale round', () => {
+    const registry = makeRegistry()
+    const table = newTable(registry)
+    expect(registry.joinParticipant(table.code, undefined, 0)).toEqual({ error: 'stale-round' })
+  })
+
+  it('admits a phone presenting no round at all, which is a deliberate arrival', () => {
+    const registry = makeRegistry()
+    const table = newTable(registry)
+    const result = registry.joinParticipant(table.code, undefined, undefined)
+    expect('error' in result).toBe(false)
+  })
+})
+
 describe('TableRegistry code exhaustion', () => {
   /**
    * No table is ever evicted today, so a long-lived process can in principle

@@ -57,6 +57,7 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
   // opened — but this map is total, so it gets an honest sentence rather
   // than a placeholder.
   'table-unavailable': 'No table could be opened. Whoever set up the screen will have to restart it.',
+  'stale-round': 'This table has moved on. Scan the code on the screen to join again.',
 }
 
 export function errorText(code: ErrorCode): string {

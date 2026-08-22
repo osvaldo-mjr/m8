@@ -27,6 +27,8 @@ export type ErrorCode =
   | 'not-allowed'
   /** No table could be opened at all: the server's code space is full. */
   | 'table-unavailable'
+  /** The phone's session names a round the table has since moved past. */
+  | 'stale-round'
 
 export interface ParticipantSnapshot {
   readonly id: string
@@ -42,7 +44,14 @@ export interface ParticipantSnapshot {
  */
 export interface TableSnapshot {
   readonly code: string
-  readonly phase: 'awaiting-host' | 'choosing-game'
+  readonly phase:
+    | 'awaiting-host'
+    | 'choosing-game'
+    | 'seating'
+    | 'playing'
+    | 'paused'
+    | 'awaiting-seat'
+    | 'finished'
   readonly participants: readonly ParticipantSnapshot[]
 }
 

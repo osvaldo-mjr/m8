@@ -80,6 +80,9 @@ interface MutableTable {
   readonly participants: MutableParticipant[]
   batonHolderId: string | null
   readonly createdAt: number
+  round: number
+  chosenGameId: string | null
+  preview: { gameId: string; page: number } | null
 }
 
 /**
@@ -134,17 +137,30 @@ export class TableRegistry {
       participants: [],
       batonHolderId: null,
       createdAt: this.#clock.now(),
+      round: 1,
+      chosenGameId: null,
+      preview: null,
     }
     this.#tables.set(minted, table)
     return { table }
   }
 
-  joinParticipant(code: string, token: string | undefined): JoinResult {
+  joinParticipant(code: string, token: string | undefined, round?: number): JoinResult {
     const normalized = normalizeTableCode(code)
     if (normalized === null) return { error: 'invalid-code' }
 
     const table = this.#tables.get(normalized)
     if (!table) return { error: 'unknown-table' }
+
+    /**
+     * A stale marker means this phone is resuming a session the table has moved
+     * past — a page left open in a pocket, reconnecting on its own. Refusing it
+     * is what stops a seat being taken by nobody.
+     *
+     * No marker at all means someone typed the code, which is as deliberate an
+     * act as scanning, so it is admitted and assigned the current round.
+     */
+    if (round !== undefined && round !== table.round) return { error: 'stale-round' }
 
     const returning = token === undefined
       ? undefined

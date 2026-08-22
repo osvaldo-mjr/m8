@@ -38,3 +38,4 @@ export type DomainError =
   | 'table-full'
   | 'not-allowed'
   | 'table-unavailable'
+  | 'stale-round'
