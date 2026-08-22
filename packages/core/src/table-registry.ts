@@ -85,12 +85,6 @@ interface MutableTable {
   chosenGameId: string | null
   preview: { gameId: string; page: number } | null
   seats: readonly Seat[]
-  /**
-   * The chosen game's minimum, from its manifest — kept only here, never on
-   * the public `Table`, because nothing outside `deviceView` needs it: the
-   * manifest itself lives in `@m8/contract`, which this package never
-   * imports. `null` until a game is chosen.
-   */
   seatsMin: number | null
 }
 
@@ -370,22 +364,26 @@ export class TableRegistry {
    * and the chosen game's minimum, so a rule that decides whether a match may
    * begin exists in exactly one place rather than being reimplemented on the
    * device.
+   *
+   * `canChooseGame` is gated on `chosenGameId === null` as well as on holding
+   * the baton: `chooseGame` itself refuses a second call once a game is
+   * chosen (see `chooseGame`'s own guard), and a `DeviceView` that still
+   * answered `true` here would offer an action the domain is about to
+   * reject — the exact failure this split exists to prevent.
    */
   deviceView(table: Table, participantId: string): DeviceView {
-    const mutable = this.#findMutable(table.code)
-    const seats = mutable?.seats ?? table.seats
-    const min = mutable?.seatsMin ?? null
-    const seat = seatOf(seats, participantId)
+    const seat = seatOf(table.seats, participantId)
     const hasBaton = table.batonHolderId === participantId
+    const min = table.seatsMin
 
     return {
       participantId,
       phase: table.phase,
       seatNumber: seat?.number ?? null,
       hasBaton,
-      canChooseGame: hasBaton,
-      canStart: min === null ? false : canStart(seats, min),
-      playersNeeded: min === null ? 0 : Math.max(0, min - occupiedCount(seats)),
+      canChooseGame: hasBaton && table.chosenGameId === null,
+      canStart: min === null ? false : canStart(table.seats, min),
+      playersNeeded: min === null ? 0 : Math.max(0, min - occupiedCount(table.seats)),
     }
   }
 

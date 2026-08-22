@@ -67,10 +67,11 @@ These are the rules. Breaking one is a design failure, not a shortcut.
    with Immer. No hidden state and no clock reads — time and randomness enter as
    inputs.
 8. **`packages/core` performs no I/O.** No Fastify, no Socket.IO, no timers, no
-   clock reads. It owns its own vocabulary — `TableView`, `DeviceView`,
-   `DomainError` — and `apps/server` translates that to wire messages. It emits
-   no events: a seam that carried nothing for two milestones was a claim, not
-   a boundary.
+   clock of its own — time enters only as an injected `Clock` dependency,
+   never read from the system directly. It owns its own vocabulary —
+   `TableView`, `DeviceView`, `DomainError` — and `apps/server` translates
+   that to wire messages. It emits no events: a seam that carried nothing for
+   two milestones was a claim, not a boundary.
 9. **Socket.IO is a transport, not an architecture.** All platform code talks to
    the `Transport` interface. A fake in-memory implementation drives the tests.
 10. **Session owner and baton are separate concepts.** The baton is transferable;

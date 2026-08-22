@@ -771,11 +771,27 @@ describe('the device view', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
     const host = join(registry, code)
+    const beforeChoosing = registry.getTable(code)!
+    expect(registry.deviceView(beforeChoosing, host.id).canChooseGame).toBe(true)
+
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     const other = join(registry, code)
     const table = registry.getTable(code)!
-    expect(registry.deviceView(table, host.id).canChooseGame).toBe(true)
     expect(registry.deviceView(table, other.id).canChooseGame).toBe(false)
+  })
+
+  it('closes canChooseGame once a game is chosen, even for the baton holder', () => {
+    // chooseGame itself refuses a second call once chosenGameId is set (see
+    // 'choosing a game' > 'refuses a second choice once a game is already
+    // chosen'). A DeviceView that still answered true here would offer an
+    // action the domain is about to reject — the exact failure this split
+    // exists to prevent.
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const table = registry.getTable(code)!
+    expect(registry.deviceView(table, host.id).canChooseGame).toBe(false)
   })
 
   it('says how many more players are needed rather than the arithmetic', () => {

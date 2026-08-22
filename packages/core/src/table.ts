@@ -43,4 +43,10 @@ export interface Table {
   /** Empty until a game is chosen — seats come from a game's manifest, so
    * before a choice there is nothing to size them by. */
   readonly seats: readonly Seat[]
+  /**
+   * The chosen game's minimum, from its manifest. A plain number rather than
+   * the manifest itself — `packages/core` never imports `@m8/contract` — and
+   * `null` until a game is chosen, the same moment `seats` stops being empty.
+   */
+  readonly seatsMin: number | null
 }
