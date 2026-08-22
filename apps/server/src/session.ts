@@ -209,6 +209,19 @@ export class Session {
           return
         }
 
+        // A manifest that resolves but is not yet playable is refused the
+        // same way: the catalogue lists a coming-soon game and the phone may
+        // preview it (`previewGame` carries no such gate), but committing
+        // seats to a game with no rules to start would leave the table stuck
+        // in `seating` forever. This is the rule "three of the four games
+        // are not playable" is meant to enforce — enforcing it only on the
+        // phone's own `canChooseGame` check would make it a UI convention
+        // rather than a guarantee the domain construction provides.
+        if (manifest.status !== 'playable') {
+          connection.send({ type: 'error', code: 'not-allowed' })
+          return
+        }
+
         const result = this.#registry.chooseGame(
           attachment.code,
           attachment.participantId,

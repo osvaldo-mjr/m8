@@ -1,6 +1,6 @@
 import type { DeviceSnapshot, ErrorCode, TablePhaseName } from '@m8/protocol'
 import { describe, expect, it } from 'vitest'
-import { determineScreen, errorText, startReasonText, waitingText } from './screen.js'
+import { START_NOT_YET_TEXT, determineScreen, errorText, startReasonText, waitingText } from './screen.js'
 
 function device(overrides: Partial<DeviceSnapshot> = {}): DeviceSnapshot {
   return {
@@ -145,6 +145,18 @@ describe('startReasonText', () => {
 
   it('uses the plural, and the real count, for more than one', () => {
     expect(startReasonText(3)).toBe('Waiting for 3 more players.')
+  })
+})
+
+describe('START_NOT_YET_TEXT', () => {
+  // Tapping an enabled START does nothing on the wire yet — no message for
+  // it exists until the first real game does — so the tap must say something
+  // a person in the room understands, not go silent and not say
+  // "not implemented".
+  it('is honest about there being nothing to do yet, without saying so like a stack trace', () => {
+    expect(START_NOT_YET_TEXT.length).toBeGreaterThan(0)
+    expect(START_NOT_YET_TEXT.toLowerCase()).not.toContain('not implemented')
+    expect(START_NOT_YET_TEXT.toLowerCase()).not.toContain('error')
   })
 })
 

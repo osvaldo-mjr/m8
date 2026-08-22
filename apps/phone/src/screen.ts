@@ -97,6 +97,19 @@ export function startReasonText(playersNeeded: number): string | null {
 }
 
 /**
+ * What tapping an *enabled* START says. There is no wire message yet for
+ * actually starting a match — see `App.tsx`'s seating screen — but the
+ * button still lights up the moment the table is ready, because that light-up
+ * is this plan's own proof that the server's decision reached the phone. The
+ * tap must stay honest rather than silent: a host who watches the button
+ * enable, taps it as the obvious next step, and gets nothing back will
+ * reasonably conclude the app is broken. This is what the tap answers with
+ * instead — plain enough for a living room, not a developer's placeholder.
+ */
+export const START_NOT_YET_TEXT =
+  'The table is ready. Starting the match arrives with the first real game — coming soon.'
+
+/**
  * What the waiting screen says, per phase. A `Record` over every phase this
  * plan's wire can name, not only the ones `determineScreen` actually routes
  * here today — the same reasoning as `ERROR_TEXT`: a phase this function has

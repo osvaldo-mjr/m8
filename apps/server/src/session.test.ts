@@ -449,6 +449,36 @@ describe('the catalogue and seats messages', () => {
     expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'not-allowed' })
   })
 
+  it('refuses chooseGame for a game whose manifest is coming-soon, leaving the table unchanged', () => {
+    // 'chess' is in the catalogue but its manifest carries status
+    // 'coming-soon' (packages/games/chess/src/manifest.ts) — unlike
+    // 'backgammon' above, findManifest resolves it, so only a status check
+    // catches this. Without the guard, seats would be created for a game
+    // with no rules to ever start.
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'chooseGame', gameId: 'chess' })
+
+    const table = registry.getTable(code)!
+    expect(table.chosenGameId).toBeNull()
+    expect(table.seats).toHaveLength(0)
+    expect(table.phase).toBe('choosing-game')
+    expect(transport.sentTo('host')).toContainEqual({ type: 'error', code: 'not-allowed' })
+  })
+
+  it('still allows previewing a coming-soon game — only choosing it is refused', () => {
+    const code = openTable()
+    joinPhone('host', code)
+
+    transport.receive('host', { type: 'previewGame', gameId: 'chess' })
+
+    expect(registry.getTable(code)!.preview).toEqual({ gameId: 'chess', page: 0 })
+    expect(transport.sentTo('host')).not.toContainEqual(
+      expect.objectContaining({ type: 'error' }),
+    )
+  })
+
   it('refuses a phone joining before a game is chosen', () => {
     const code = openTable()
     joinPhone('host', code)

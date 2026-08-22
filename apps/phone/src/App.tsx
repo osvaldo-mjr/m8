@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { codeFromLocation, connectPhone, type PhoneClient } from './client.js'
 import { PHONE_LOCALE, fetchCatalogue, searchCatalogue, type PhoneCatalogueEntry } from './catalogue.js'
 import { avatarTileClassName, describeProfileSubmission } from './profile.js'
-import { determineScreen, errorText, startReasonText, waitingText } from './screen.js'
+import { START_NOT_YET_TEXT, determineScreen, errorText, startReasonText, waitingText } from './screen.js'
 
 /**
  * The screen is themed in this person's own colour, which is the same colour
@@ -56,6 +56,12 @@ export function App() {
 
   const [device, setDevice] = useState<DeviceSnapshot | null>(null)
   const [error, setError] = useState<ErrorCode | null>(null)
+  // Whether an enabled START has been tapped this session, so the tap can
+  // answer honestly (see START_NOT_YET_TEXT) instead of doing nothing. Not
+  // reset on its own: once a host has been told, re-showing the same answer
+  // if the button happens to cycle disabled-then-enabled again is the right
+  // default, not a bug to guard against.
+  const [startTapped, setStartTapped] = useState(false)
   const client = useRef<PhoneClient | null>(null)
 
   useEffect(() => {
@@ -396,16 +402,18 @@ export function App() {
           </label>
 
           <div>
-            {/* No `onClick`: there is no wire message yet for actually
-                starting a match. `canStart`/`playersNeeded` exist on
-                `DeviceSnapshot` so this decision can be drawn now, but the
-                trigger itself needs a real game to build an initial state
-                from (see the design's §6.4), and the first one arrives with
-                Plan 3. This button is the decision surface that trigger will
-                be wired to, not a dead end left by accident. */}
+            {/* There is no wire message yet for actually starting a match —
+                `canStart`/`playersNeeded` exist on `DeviceSnapshot` so this
+                decision can be drawn now, but the trigger itself needs a real
+                game to build an initial state from (see the design's §6.4),
+                and the first one arrives with Plan 3. The button still lights
+                up the moment the table is ready — that is this plan's own
+                proof the server's decision reached the phone — so the tap is
+                answered honestly instead of silently doing nothing. */}
             <button
               type="button"
               disabled={!snapshot.canStart}
+              onClick={() => setStartTapped(true)}
               className={
                 snapshot.canStart
                   ? 'm8-person-bg m8-eyebrow w-full rounded-2xl py-5 text-lg text-ink'
@@ -414,6 +422,11 @@ export function App() {
             >
               START
             </button>
+            {snapshot.canStart && startTapped && (
+              <p className="mt-3 text-base" aria-live="polite">
+                {START_NOT_YET_TEXT}
+              </p>
+            )}
             {startReasonText(snapshot.playersNeeded) !== null && (
               <p className="mt-3 text-base" aria-live="polite">
                 {startReasonText(snapshot.playersNeeded)}
