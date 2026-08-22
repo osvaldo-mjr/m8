@@ -48,7 +48,8 @@ export function uncoveredWorkspaces(
 export function statesNumber(text: string, value: number): boolean {
   const plain = String(value)
   const grouped = value.toLocaleString('en-US')
-  return [plain, grouped].some((form) =>
-    new RegExp(`(?<![\\d,])${form.replace(/,/g, ',')}(?![\\d,])`).test(text),
-  )
+  // Interpolated into a pattern without escaping, which is safe here and only
+  // here: both forms come from a `number`, so they are digits and commas and
+  // nothing a regular expression reads as syntax.
+  return [plain, grouped].some((form) => new RegExp(`(?<![\\d,])${form}(?![\\d,])`).test(text))
 }

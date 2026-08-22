@@ -169,12 +169,14 @@ run on a real set yet.
     the television, that the seat is drawn empty with its own number where
     his avatar was, and that the QR comes back — a chosen game with a free
     seat is again a table anyone may join. Confirm his phone keeps its host
-    controls throughout: the switch, the START button and the catalogue he
-    reached them from must all still be there, since stepping out of a chair
-    is not leaving the table. Switch it back **on**: confirm he retakes the
-    free seat and the QR disappears the moment he does. That is the switch's
-    whole behaviour, both ways, and the QR following it is the visible proof
-    that the code is offered for a seat rather than for the table.
+    controls throughout — the switch itself, and the START button beneath
+    it — since stepping out of a chair is not leaving the table. (There is
+    no catalogue to come back to: a game is chosen once, and this milestone
+    has no path back out of it.) Switch it back **on**: confirm he retakes
+    the free seat and the QR disappears the moment he does. That is the
+    switch's whole behaviour, both ways, and the QR following it is the
+    visible proof that the code is offered for a seat rather than for the
+    table.
 20. With both seats filled, confirm each phone shows its own seat's colour
     filling the block behind its own avatar and name, and that this colour
     is the same one the television draws on that seat's chip. The two
@@ -184,10 +186,11 @@ run on a real set yet.
 21. With one seat empty — either before the second phone scans, or during
     the moment step 19 creates by switching "PLAYING" off — confirm the
     host's phone shows a START button in its outlined, inactive state, with
-    "Waiting for one more player." printed beneath it. Once both seats are filled, confirm START
-    switches to its filled, lit state. Tap it: confirm nothing starts, and
-    the phone instead prints "The table is ready. Starting the match arrives
-    with the first real game — coming soon." beneath the button. **This is
+    "Waiting for one more player." printed beneath it. Once both seats are
+    filled, confirm START switches to its filled, lit state. Tap it:
+    confirm nothing starts, and the phone instead prints "The table is
+    ready. Starting the match arrives with the first real game — coming
+    soon." beneath the button. **This is
     the expected outcome, not a failure.** The light-up at the minimum is
     what this plan built and is what this step exists to check; starting an
     actual match has no rules to start yet, and the tap says so on purpose
@@ -239,6 +242,12 @@ redesigning the platform.
 
 The room round on real hardware: floor, wooden table, lamp pool and directional
 shadows. The owner validated it.
+
+**What this verdict covers.** The checklist as it stood on that day, which ended
+at step 16. Steps 17 to 21 — the catalogue, the manual, choosing a game and the
+seats — arrived with a later plan and were not part of this run; they are marked
+above as not yet run on a real set. The PASS stands for the steps that existed
+then, and is not a verdict on the ones added since.
 
 **Observed, not fixed:** on some sets the table looks more stretched than on
 others — noticeable, not bad enough to act on yet.
