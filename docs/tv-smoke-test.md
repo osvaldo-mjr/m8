@@ -147,27 +147,44 @@ run on a real set yet.
     and that only the manual changes — the box art beside it neither blinks
     nor refetches. Keep tapping the right arrow past the last page: confirm
     the indicator holds at "3 of 3" rather than going blank or erroring.
-    Tap the left arrow (‹) back past the first page: confirm it holds at
-    "1 of 3".
+    Then tap the left arrow (‹) **once**: confirm the television moves
+    immediately to "2 of 3". This is the step that matters most here — the
+    phone keeps its own page number and the server clamps silently, so a
+    phone that counted past the last page would spend one tap per overshoot
+    doing nothing visible, which reads in a living room as a broken remote.
+    Tap ‹ back past the first page as well: confirm it holds at "1 of 3",
+    and that one tap of › then moves to "2 of 3".
 19. Tap "PLAY THIS". Confirm the television leaves the box-and-manual screen
-    for the seating screen: two empty seats and the QR code, both visible —
-    the QR returns because a chosen game with a free seat is exactly the
-    second case the design allows anyone to join in. Scan the QR from a
-    second phone: confirm the television's QR disappears the instant the
-    scan lands, before that phone has even been given a name — the seat is
-    claimed on arrival, not on naming, and the QR's disappearance is the
-    only visible proof of that ordering. On the host's own phone, switch on
-    "PLAYING": confirm this claims the table's other seat, the last one, and
-    that the QR (already gone, from the step before) stays gone.
+    for the seating screen, showing the host already in the first seat with
+    his `HOST` badge — choosing a game seats whoever chose it — one empty
+    seat beside him, and the QR code, which returns because a chosen game
+    with a free seat is exactly the second case the design allows anyone to
+    join in. Scan the QR from a second phone: confirm the television's QR
+    disappears the instant the scan lands, before that phone has even been
+    given a name — the seat is claimed on arrival, not on naming, and the
+    QR's disappearance is the only visible proof of that ordering. Both of
+    tic-tac-toe's seats are now taken, so there is no third seat to claim:
+    what the host's "PLAYING" switch does from here is release his own. On
+    his phone, switch "PLAYING" **off**: confirm his chip leaves its seat on
+    the television, that the seat is drawn empty with its own number where
+    his avatar was, and that the QR comes back — a chosen game with a free
+    seat is again a table anyone may join. Confirm his phone keeps its host
+    controls throughout: the switch, the START button and the catalogue he
+    reached them from must all still be there, since stepping out of a chair
+    is not leaving the table. Switch it back **on**: confirm he retakes the
+    free seat and the QR disappears the moment he does. That is the switch's
+    whole behaviour, both ways, and the QR following it is the visible proof
+    that the code is offered for a seat rather than for the table.
 20. With both seats filled, confirm each phone shows its own seat's colour
     filling the block behind its own avatar and name, and that this colour
     is the same one the television draws on that seat's chip. The two
     screens agreeing on whose colour is whose is what lets a phone in
     someone's hand and a chip on the television, read from opposite ends of
     a living room, be recognised as the same person.
-21. Before the second seat fills, confirm the host's phone shows a START
-    button in its outlined, inactive state, with "Waiting for one more
-    player." printed beneath it. Once both seats are filled, confirm START
+21. With one seat empty — either before the second phone scans, or during
+    the moment step 19 creates by switching "PLAYING" off — confirm the
+    host's phone shows a START button in its outlined, inactive state, with
+    "Waiting for one more player." printed beneath it. Once both seats are filled, confirm START
     switches to its filled, lit state. Tap it: confirm nothing starts, and
     the phone instead prints "The table is ready. Starting the match arrives
     with the first real game — coming soon." beneath the button. **This is
@@ -298,15 +315,19 @@ worth recording because they justify the existence of this checklist:
 Still open:
 
 - The set model and firmware year.
-- The screen still gives no visual sign of who holds the baton — the same
-  defect as the first one above, in the same function, on an attribute
-  nobody can see. This was left for the visual identity pass, which has now
-  happened and did not settle it: the approved direction describes the code
-  tiles, the QR, the per-person colour and the row of people, and says
-  nothing about the baton. Inventing a mark for it would have been the one
-  thing that pass was told not to do. It stays open, and it is now a
-  question for whoever specifies the first game, where a baton-only action
-  finally exists to justify a mark.
+- The **join screen** still gives no visual sign of who holds the baton —
+  the same defect as the first one above, in the same function, on an
+  attribute nobody can see. The seating screen no longer has it: the
+  catalogue and seats plan gave the host's chip a `HOST` badge in the
+  eyebrow row, so from the moment a game is chosen the room can see who is
+  running the table. Before that moment it still cannot. This was left for
+  the visual identity pass, which happened and did not settle it: the
+  approved direction describes the code tiles, the QR, the per-person colour
+  and the row of people, and says nothing about the baton. Inventing a mark
+  for it would have been the one thing that pass was told not to do. What is
+  left of it is a question for whoever specifies the first game, where a
+  baton-only action finally exists to justify a mark on the one screen that
+  still lacks one.
 - Steps 10 to 13 (typography, tilt, the arrival pop, the per-person colour)
   have never been run on a television.
 
