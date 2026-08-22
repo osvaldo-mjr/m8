@@ -17,6 +17,7 @@ WORKDIR /app
 # a line here.
 COPY package.json package-lock.json ./
 COPY packages/avatars/package.json ./packages/avatars/package.json
+COPY packages/contract/package.json ./packages/contract/package.json
 COPY packages/core/package.json ./packages/core/package.json
 COPY packages/protocol/package.json ./packages/protocol/package.json
 COPY packages/tokens/package.json ./packages/tokens/package.json

@@ -1,4 +1,5 @@
-import { NICKNAME_MAX_LENGTH as DOMAIN_LIMIT } from '@m8/core'
+import { MAX_SEATS } from '@m8/contract'
+import { MAX_PARTICIPANTS, NICKNAME_MAX_LENGTH as DOMAIN_LIMIT } from '@m8/core'
 import { NICKNAME_MAX_LENGTH as WIRE_LIMIT } from '@m8/protocol'
 import { describe, expect, it } from 'vitest'
 
@@ -26,5 +27,9 @@ describe('the nickname limit', () => {
     // Guards the guard: two constants that were both undefined, or both
     // zero, would satisfy the equality above and break every nickname.
     expect(DOMAIN_LIMIT).toBeGreaterThan(0)
+  })
+
+  it('bounds a table at the same number in the contract and in the domain', () => {
+    expect(MAX_SEATS).toBe(MAX_PARTICIPANTS)
   })
 })
