@@ -37,7 +37,32 @@ describe('catalogueForPhone', () => {
 
   it('carries what the phone lists with', () => {
     const entry = catalogueForPhone(CATALOGUE)[0]!
-    expect(Object.keys(entry).sort()).toEqual(['cover', 'id', 'name', 'seats', 'status', 'tagline'])
+    expect(Object.keys(entry).sort()).toEqual(['cover', 'id', 'name', 'pageCount', 'status', 'tagline'])
+  })
+
+  /**
+   * A count, not the pages. The manual itself must never reach a phone — it is
+   * read from the large screen by the whole room — but a phone that does not
+   * know how many pages exist cannot stop its own page arrows walking past the
+   * end, and the server clamps silently, so the next tap back does nothing.
+   * A number is the least it can be told that closes that.
+   */
+  it('carries how many manual pages a game has, without carrying any of them', () => {
+    const entry = catalogueForPhone(CATALOGUE).find((e) => e.id === 'tic-tac-toe')!
+    const manifest = findManifest('tic-tac-toe')!
+
+    expect(entry.pageCount).toBe(manifest.manual['pt-BR'].length)
+    expect(entry.pageCount).toBeGreaterThan(0)
+  })
+
+  it('counts the pages every catalogued game actually has', () => {
+    for (const entry of catalogueForPhone(CATALOGUE)) {
+      const manifest = findManifest(entry.id)!
+      expect({ id: entry.id, pages: entry.pageCount }).toEqual({
+        id: entry.id,
+        pages: Math.min(manifest.manual['pt-BR'].length, manifest.manual.en.length),
+      })
+    }
   })
 
   it('turns the manifest file name into a URL the phone can fetch', () => {

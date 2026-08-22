@@ -8,7 +8,7 @@ import type {
   SeatSnapshot,
   TableSnapshot,
 } from '@m8/protocol'
-import { coverUrl } from './catalogue.js'
+import { coverUrl, manifestPageCount } from './catalogue.js'
 
 /**
  * The only place that knows both `@m8/core`'s vocabulary and the wire
@@ -46,19 +46,6 @@ export function translateDevice(device: DeviceView): DeviceSnapshot {
     canStart: device.canStart,
     playersNeeded: device.playersNeeded,
   }
-}
-
-/**
- * How many pages a manifest's manual holds. The two locales are meant to
- * carry the same count; the lower of the two is used so a locale that
- * somehow fell behind can never be indexed past its own end.
- *
- * Exported so `session.ts` can clamp an incoming `manualPage` against the
- * same count this file resolves against — one formula, not two that could
- * drift.
- */
-export function manifestPageCount(manifest: GameManifest): number {
-  return Math.min(manifest.manual['pt-BR'].length, manifest.manual.en.length)
 }
 
 /**

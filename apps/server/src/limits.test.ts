@@ -1,8 +1,8 @@
-import type { Locale as ContractLocale } from '@m8/contract'
+import type { GameManifest, Locale as ContractLocale } from '@m8/contract'
 import { MAX_SEATS } from '@m8/contract'
 import type { TablePhase } from '@m8/core'
 import { MAX_PARTICIPANTS, NICKNAME_MAX_LENGTH as DOMAIN_LIMIT } from '@m8/core'
-import type { Locale as WireLocale, TablePhaseName } from '@m8/protocol'
+import type { GameStatus, Locale as WireLocale, TablePhaseName } from '@m8/protocol'
 import { NICKNAME_MAX_LENGTH as WIRE_LIMIT } from '@m8/protocol'
 import { describe, expect, it } from 'vitest'
 
@@ -72,5 +72,25 @@ describe('the wire and the domain agree on their shared vocabulary', () => {
   it('names the same table phases', () => {
     const phasesAgree: IfEquals<TablePhaseName, TablePhase> = true
     expect(phasesAgree).toBe(true)
+  })
+
+  /**
+   * The third of these, and the one that was missing.
+   *
+   * `GET /api/games` publishes a game's status to the phone, and the value
+   * comes straight off a manifest. The phone must not import `@m8/contract` to
+   * read one word, so the wire writes the union out — the same trade as
+   * `Locale` and `TablePhaseName`, and it earns the same guard here rather
+   * than a comment claiming one.
+   *
+   * The entry's *shape* needs no check of its own any more: the phone and the
+   * server both import `PhoneCatalogueEntry` from `@m8/protocol` rather than
+   * declaring it twice, so a field dropped or renamed stops compiling on both
+   * sides at once. Only this union, which genuinely exists twice, needs
+   * binding.
+   */
+  it('names the same game statuses', () => {
+    const statusesAgree: IfEquals<GameStatus, GameManifest['status']> = true
+    expect(statusesAgree).toBe(true)
   })
 })

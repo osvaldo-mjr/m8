@@ -1,9 +1,14 @@
 import { AVATARS, avatarGlyph } from '@m8/avatars'
-import { NICKNAME_MAX_LENGTH, type DeviceSnapshot, type ServerToClient } from '@m8/protocol'
+import {
+  NICKNAME_MAX_LENGTH,
+  type DeviceSnapshot,
+  type PhoneCatalogueEntry,
+  type ServerToClient,
+} from '@m8/protocol'
 import { PERSON_COLOR_PROPERTY, seatColor } from '@m8/tokens'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { codeFromLocation, connectPhone, type PhoneClient } from './client.js'
-import { PHONE_LOCALE, fetchCatalogue, searchCatalogue, type PhoneCatalogueEntry } from './catalogue.js'
+import { PHONE_LOCALE, clampManualPage, fetchCatalogue, searchCatalogue } from './catalogue.js'
 import { avatarTileClassName, describeProfileSubmission } from './profile.js'
 import {
   NO_PHONE_ERRORS,
@@ -331,14 +336,18 @@ export function App() {
 
           {/* The pages themselves turn on the large screen, where everyone
               can read them — the phone is sent no manual text at all, so
-              these arrows are the whole of its interface to it. */}
+              these arrows are the whole of its interface to it. Both ends are
+              clamped here, against the page count the catalogue carries: the
+              server clamps too but never says so, so a phone that counted
+              past the last page would spend the overshoot on taps that turn
+              nothing. */}
           <div className="mt-8 flex items-center gap-8">
             <button
               type="button"
               aria-label="Previous page"
               className="text-4xl"
               onClick={() => {
-                const next = Math.max(0, manualPage - 1)
+                const next = clampManualPage(manualPage - 1, entry.pageCount)
                 setManualPage(next)
                 client.current?.send({ type: 'manualPage', page: next })
               }}
@@ -350,7 +359,7 @@ export function App() {
               aria-label="Next page"
               className="text-4xl"
               onClick={() => {
-                const next = manualPage + 1
+                const next = clampManualPage(manualPage + 1, entry.pageCount)
                 setManualPage(next)
                 client.current?.send({ type: 'manualPage', page: next })
               }}

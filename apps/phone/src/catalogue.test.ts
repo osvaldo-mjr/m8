@@ -1,12 +1,22 @@
+import type { PhoneCatalogueEntry } from '@m8/protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchCatalogue, searchCatalogue, type PhoneCatalogueEntry } from './catalogue.js'
+import { clampManualPage, fetchCatalogue, searchCatalogue } from './catalogue.js'
 
+/**
+ * Fixtures, not a copy of the shipped catalogue. They carry real names because
+ * what is under test is the folding — accents, case, and the word a Brazilian
+ * would actually type — and inventing words with the same properties would
+ * only obscure that. Nothing here asserts that the shipped catalogue says any
+ * of this: the real manifests are guarded where they live
+ * (`packages/contract`'s `manifestFaults`, and `apps/server/src/catalogue.test.ts`),
+ * so these going out of date costs nothing and hides nothing.
+ */
 const ticTacToe: PhoneCatalogueEntry = {
   id: 'tic-tac-toe',
   name: { 'pt-BR': 'Jogo da velha', en: 'Tic-tac-toe' },
   tagline: { 'pt-BR': 'Três em linha, e a linha decide', en: 'Three in a row decides it' },
   cover: '/covers/tic-tac-toe/cover.svg',
-  seats: { min: 2, max: 2 },
+  pageCount: 3,
   status: 'playable',
 }
 
@@ -15,7 +25,7 @@ const chess: PhoneCatalogueEntry = {
   name: { 'pt-BR': 'Xadrez', en: 'Chess' },
   tagline: { 'pt-BR': 'Trinta e duas peças, um rei a proteger', en: 'Thirty-two pieces, one king to protect' },
   cover: '/covers/chess/cover.svg',
-  seats: { min: 2, max: 2 },
+  pageCount: 3,
   status: 'coming-soon',
 }
 
@@ -24,7 +34,7 @@ const draughts: PhoneCatalogueEntry = {
   name: { 'pt-BR': 'Damas', en: 'Draughts' },
   tagline: { 'pt-BR': 'Avance na diagonal, capture saltando', en: 'Advance diagonally, capture by jumping' },
   cover: '/covers/draughts/cover.svg',
-  seats: { min: 2, max: 2 },
+  pageCount: 3,
   status: 'coming-soon',
 }
 
@@ -33,7 +43,7 @@ const dominoes: PhoneCatalogueEntry = {
   name: { 'pt-BR': 'Dominó', en: 'Dominoes' },
   tagline: { 'pt-BR': 'Encaixe as pontas até esvaziar a mão', en: 'Match the ends until your hand is empty' },
   cover: '/covers/dominoes/cover.svg',
-  seats: { min: 2, max: 4 },
+  pageCount: 3,
   status: 'coming-soon',
 }
 
@@ -110,5 +120,39 @@ describe('fetchCatalogue', () => {
     })) as unknown as typeof fetch
 
     await expect(fetchCatalogue()).rejects.toThrow(/500/)
+  })
+})
+
+/**
+ * The phone holds its own page number — the wire carries the manual to the
+ * large screen and a `DeviceSnapshot` never mentions a preview — so nothing
+ * corrects it if it walks past the end. The server clamps what it receives and
+ * says nothing about the clamp, which is worse than it sounds: a host who taps
+ * `›` three times through a three-page manual leaves his own counter at 3
+ * while the screen shows page 3 of 3, and his next `‹` sends 2, which clamps
+ * back to the page already showing. The television does not move. One dead tap
+ * per overshoot, in front of the room, on the one interaction this plan exists
+ * to demonstrate.
+ */
+describe('clampManualPage', () => {
+  it('keeps a page inside the manual', () => {
+    expect(clampManualPage(1, 3)).toBe(1)
+  })
+
+  it('holds at the last page rather than walking past it', () => {
+    expect(clampManualPage(3, 3)).toBe(2)
+    expect(clampManualPage(99, 3)).toBe(2)
+  })
+
+  it('holds at the first page rather than walking behind it', () => {
+    expect(clampManualPage(-1, 3)).toBe(0)
+  })
+
+  it('has somewhere to be even for a game whose page count has not arrived yet', () => {
+    // The catalogue is fetched over HTTP, so a tap between the tap that opened
+    // a preview and the fetch landing has no count to clamp against. Zero is
+    // the only page such a phone can ask for, and it is a page the server
+    // resolves for every manual that exists.
+    expect(clampManualPage(1, 0)).toBe(0)
   })
 })

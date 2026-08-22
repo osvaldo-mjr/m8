@@ -2,9 +2,9 @@ import { PROTOCOL_VERSION, type ErrorCode, type ServerToClient } from '@m8/proto
 import { parseInbound } from '@m8/protocol/validate'
 import type { Table, TableRegistry } from '@m8/core'
 import type { Connection, Transport } from '@m8/transport'
-import { CATALOGUE, findManifest } from './catalogue.js'
+import { CATALOGUE, findManifest, manifestPageCount } from './catalogue.js'
 import { toError, type FaultReporter } from './faults.js'
-import { clampPage, manifestPageCount, translateDevice, translateError, translateTable } from './translate.js'
+import { clampPage, translateDevice, translateError, translateTable } from './translate.js'
 
 interface Attachment {
   readonly role: 'screen' | 'phone'

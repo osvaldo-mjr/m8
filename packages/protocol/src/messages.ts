@@ -55,6 +55,52 @@ export type TablePhaseName =
  */
 export type Locale = 'pt-BR' | 'en'
 
+/**
+ * Whether a game in the catalogue can actually be played yet.
+ *
+ * The wire's own copy of `@m8/contract`'s `GameManifest['status']`, written
+ * out for the same reason `TablePhaseName` and `Locale` are: this package must
+ * not depend on the contract package, and a phone must not pull a manifest
+ * into a browser bundle to learn one word. `apps/server/src/limits.test.ts`
+ * fails if the two ever disagree.
+ */
+export type GameStatus = 'playable' | 'coming-soon'
+
+/**
+ * One game as a phone is allowed to know it: the body of `GET /api/games`.
+ *
+ * It lives here, with the socket messages, because it is the same kind of
+ * thing — a shape the server produces and a phone consumes — even though it
+ * travels over HTTP rather than the socket. It is fetched separately because
+ * it is platform content, identical for every table and cacheable, rather than
+ * table state; that is a decision about caching, not about who owns the shape.
+ *
+ * Declared once and imported by both sides rather than written out twice. The
+ * copies the wire does keep — `TablePhaseName`, `Locale`, `GameStatus` — are
+ * unions of bare words with a type-level guard binding each; a record of seven
+ * fields has no such cheap guard, and a phone reading `entry.tagline` from a
+ * body that stopped carrying one would compile, pass its cast, and throw in
+ * front of the room.
+ *
+ * The manual is absent by construction, not by the phone declining to render
+ * it: the rules are read from the large screen by the whole room, and a device
+ * that never receives the text cannot break that later. `pageCount` is the one
+ * thing about a manual that does travel, because a phone whose page arrows do
+ * not know where the manual ends spends every overshoot on taps that turn
+ * nothing.
+ */
+export interface PhoneCatalogueEntry {
+  readonly id: string
+  readonly name: Record<Locale, string>
+  readonly tagline: Record<Locale, string>
+  /** A URL the phone can fetch. The platform decides where a game's assets
+   * are published, so this is never the file name a manifest declares. */
+  readonly cover: string
+  /** How many pages this game's manual has — a count, never the pages. */
+  readonly pageCount: number
+  readonly status: GameStatus
+}
+
 export interface ParticipantSnapshot {
   readonly id: string
   readonly nickname: string

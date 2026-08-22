@@ -1,24 +1,23 @@
-import type { Locale } from '@m8/protocol'
-
-/** Mirrors `@m8/contract`'s `GameManifest['status']` without importing the
- * contract package: the phone may not depend on it (see `catalogue.ts` on the
- * server, which is the one place allowed to see both). */
-export type GameStatus = 'playable' | 'coming-soon'
+import type { Locale, PhoneCatalogueEntry } from '@m8/protocol'
 
 /**
- * What `GET /api/games` sends. The server's own `PhoneCatalogueEntry`
- * (`apps/server/src/catalogue.ts`) is the source of truth for the shape; this
- * is the phone's copy of it, deliberately with no `manual` field — there is
- * nothing here to render even if a future screen tried, because the manual is
- * read from the large screen, never from a phone.
+ * Confines a page to a manual of `pageCount` pages, so the arrows on this
+ * device cannot count past either end of it.
+ *
+ * The same rule as `clampPage` on the server (`apps/server/src/translate.ts`)
+ * and deliberately a second copy of it: this one keeps the phone's own
+ * counter honest, that one is the server's last line of defence before it
+ * indexes a manual, and neither may be dropped because the other exists. What
+ * makes them safe to have twice is that they cannot disagree in a way that
+ * matters — this one only ever narrows what the phone would otherwise send,
+ * and the server clamps whatever arrives regardless.
+ *
+ * `pageCount` of zero is the state before the catalogue fetch lands, where
+ * page zero is the only page a phone can sensibly ask for.
  */
-export interface PhoneCatalogueEntry {
-  readonly id: string
-  readonly name: Record<Locale, string>
-  readonly tagline: Record<Locale, string>
-  readonly cover: string
-  readonly seats: { readonly min: number; readonly max: number }
-  readonly status: GameStatus
+export function clampManualPage(page: number, pageCount: number): number {
+  if (pageCount <= 0) return 0
+  return Math.min(Math.max(page, 0), pageCount - 1)
 }
 
 /**
@@ -39,6 +38,12 @@ export async function fetchCatalogue(): Promise<PhoneCatalogueEntry[]> {
   if (!response.ok) {
     throw new Error(`GET /api/games failed with status ${response.status}`)
   }
+  // A cast, and it is a claim about the server rather than a check of it. What
+  // makes the claim safe is that `PhoneCatalogueEntry` is the wire's own
+  // declaration, imported here and imported by the one function that builds
+  // this body (`apps/server/src/catalogue.ts`), so there is no second copy for
+  // the two to drift apart on: a field dropped or renamed on the server stops
+  // compiling on both sides at once.
   return (await response.json()) as PhoneCatalogueEntry[]
 }
 
