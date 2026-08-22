@@ -124,11 +124,6 @@ describe('TableRegistry.joinParticipant', () => {
     if ('error' in result) throw new Error(result.error)
 
     expect(result.table.batonHolderId).toBe(result.participant.id)
-    expect(result.events).toContainEqual({
-      type: 'baton-granted',
-      code,
-      participantId: result.participant.id,
-    })
   })
 
   it('moves the table to choosing-game once a host arrives', () => {
@@ -163,11 +158,6 @@ describe('TableRegistry.joinParticipant', () => {
 
     expect(again.participant.id).toBe(first.participant.id)
     expect(again.table.participants).toHaveLength(1)
-    expect(again.events).toContainEqual({
-      type: 'participant-rejoined',
-      code,
-      participantId: first.participant.id,
-    })
   })
 
   it('treats an unrecognized token as a new participant', () => {
@@ -184,13 +174,8 @@ describe('TableRegistry.disconnectParticipant', () => {
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
-    const events = registry.disconnectParticipant(code, joined.participant.id)
+    registry.disconnectParticipant(code, joined.participant.id)
 
-    expect(events).toContainEqual({
-      type: 'participant-disconnected',
-      code,
-      participantId: joined.participant.id,
-    })
     expect(registry.getTable(code)?.participants).toHaveLength(1)
     expect(registry.getTable(code)?.participants[0]?.connected).toBe(false)
   })
@@ -201,10 +186,9 @@ describe('TableRegistry.disconnectParticipant', () => {
     const host = registry.joinParticipant(code, undefined)
     if ('error' in host) throw new Error(host.error)
 
-    const events = registry.disconnectParticipant(code, host.participant.id)
+    registry.disconnectParticipant(code, host.participant.id)
 
     expect(registry.getTable(code)?.batonHolderId).toBe(host.participant.id)
-    expect(events.some((event) => event.type.startsWith('baton-'))).toBe(false)
   })
 
   it('never changes the baton holder when a non-holder disconnects', () => {
@@ -216,10 +200,9 @@ describe('TableRegistry.disconnectParticipant', () => {
     const second = registry.joinParticipant(code, undefined)
     if ('error' in second) throw new Error('join failed')
 
-    const events = registry.disconnectParticipant(code, second.participant.id)
+    registry.disconnectParticipant(code, second.participant.id)
 
     expect(registry.getTable(code)?.batonHolderId).toBe(host.participant.id)
-    expect(events.some((event) => event.type.startsWith('baton-'))).toBe(false)
   })
 })
 
@@ -233,14 +216,9 @@ describe('TableRegistry.removeParticipant', () => {
     const second = registry.joinParticipant(code, undefined)
     if ('error' in second) throw new Error('join failed')
 
-    const events = registry.removeParticipant(code, host.participant.id)
+    registry.removeParticipant(code, host.participant.id)
 
     expect(registry.getTable(code)?.batonHolderId).toBe(second.participant.id)
-    expect(events).toContainEqual({
-      type: 'baton-migrated',
-      code,
-      participantId: second.participant.id,
-    })
   })
 
   it('returns the table to awaiting-host when the last participant leaves', () => {
@@ -249,15 +227,14 @@ describe('TableRegistry.removeParticipant', () => {
     const host = registry.joinParticipant(code, undefined)
     if ('error' in host) throw new Error(host.error)
 
-    const events = registry.removeParticipant(code, host.participant.id)
+    registry.removeParticipant(code, host.participant.id)
 
     const table = registry.getTable(code)
     expect(table?.phase).toBe('awaiting-host')
     expect(table?.batonHolderId).toBeNull()
-    expect(events).toContainEqual({ type: 'table-emptied', code })
   })
 
-  it('leaves the baton untouched and emits no baton event when a non-holder leaves', () => {
+  it('leaves the baton untouched when a non-holder leaves', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
@@ -266,10 +243,9 @@ describe('TableRegistry.removeParticipant', () => {
     const second = registry.joinParticipant(code, undefined)
     if ('error' in second) throw new Error('join failed')
 
-    const events = registry.removeParticipant(code, second.participant.id)
+    registry.removeParticipant(code, second.participant.id)
 
     expect(registry.getTable(code)?.batonHolderId).toBe(host.participant.id)
-    expect(events.some((event) => event.type.startsWith('baton-'))).toBe(false)
   })
 })
 
@@ -304,11 +280,10 @@ describe('TableRegistry.setProfile', () => {
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
-    const events = registry.setProfile(code, joined.participant.id, '', 'fox')
+    registry.setProfile(code, joined.participant.id, '', 'fox')
 
     expect(registry.getTable(code)?.participants[0]?.nickname).toBe('')
     expect(registry.getTable(code)?.participants[0]?.avatarId).not.toBe('fox')
-    expect(events).toEqual([])
   })
 
   it('treats a whitespace-only nickname as no profile change', () => {
@@ -317,25 +292,21 @@ describe('TableRegistry.setProfile', () => {
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
-    const events = registry.setProfile(code, joined.participant.id, '   ', 'fox')
+    registry.setProfile(code, joined.participant.id, '   ', 'fox')
 
     expect(registry.getTable(code)?.participants[0]?.nickname).toBe('')
     expect(registry.getTable(code)?.participants[0]?.avatarId).not.toBe('fox')
-    expect(events).toEqual([])
   })
 
-  it('still stores a valid nickname and emits a profile-changed event', () => {
+  it('still stores a valid nickname', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
-    const events = registry.setProfile(code, joined.participant.id, 'Ana', 'fox')
+    registry.setProfile(code, joined.participant.id, 'Ana', 'fox')
 
     expect(registry.getTable(code)?.participants[0]?.nickname).toBe('Ana')
-    expect(events).toEqual([
-      { type: 'profile-changed', code, participantId: joined.participant.id },
-    ])
   })
 })
 
@@ -346,11 +317,10 @@ describe('TableRegistry.setProfile avatar validation', () => {
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
-    const events = registry.setProfile(code, joined.participant.id, 'Ana', 'dragon')
+    registry.setProfile(code, joined.participant.id, 'Ana', 'dragon')
 
     // Same rule as a blank nickname: not a change to something else, no
     // change at all - so a malformed submit cannot half-apply.
-    expect(events).toEqual([])
     expect(registry.getTable(code)?.participants[0]?.nickname).toBe('')
     expect(registry.getTable(code)?.participants[0]?.avatarId).toBe('unset')
   })
@@ -361,9 +331,8 @@ describe('TableRegistry.setProfile avatar validation', () => {
     const joined = registry.joinParticipant(code, undefined)
     if ('error' in joined) throw new Error(joined.error)
 
-    const events = registry.setProfile(code, joined.participant.id, 'Ana', 'x'.repeat(120))
+    registry.setProfile(code, joined.participant.id, 'Ana', 'x'.repeat(120))
 
-    expect(events).toEqual([])
     expect(registry.getTable(code)?.participants[0]?.avatarId).toBe('unset')
   })
 
@@ -794,5 +763,64 @@ describe('joining once a game is chosen', () => {
     registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
     join(registry, code)
     expect(registry.joinParticipant(code, undefined, undefined)).toEqual({ error: 'table-full' })
+  })
+})
+
+describe('the device view', () => {
+  it('tells the baton holder he may choose a game, and nobody else', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const other = join(registry, code)
+    const table = registry.getTable(code)!
+    expect(registry.deviceView(table, host.id).canChooseGame).toBe(true)
+    expect(registry.deviceView(table, other.id).canChooseGame).toBe(false)
+  })
+
+  it('says how many more players are needed rather than the arithmetic', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const table = registry.getTable(code)!
+    expect(registry.deviceView(table, host.id)).toMatchObject({
+      canStart: false,
+      playersNeeded: 1,
+    })
+  })
+
+  it('carries nothing about the table', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const view = registry.deviceView(registry.getTable(code)!, host.id)
+    expect(Object.keys(view).sort()).toEqual([
+      'canChooseGame',
+      'canStart',
+      'hasBaton',
+      'participantId',
+      'phase',
+      'playersNeeded',
+      'seatNumber',
+    ])
+  })
+})
+
+describe('the table view', () => {
+  it('shows the QR exactly while someone may join', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    expect(registry.snapshot(registry.getTable(code)!).qrVisible).toBe(true)
+
+    const host = join(registry, code)
+    expect(registry.snapshot(registry.getTable(code)!).qrVisible).toBe(false)
+
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    expect(registry.snapshot(registry.getTable(code)!).qrVisible).toBe(true)
+
+    join(registry, code)
+    expect(registry.snapshot(registry.getTable(code)!).qrVisible).toBe(false)
   })
 })

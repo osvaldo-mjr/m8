@@ -11,8 +11,8 @@ export type TablePhase =
 
 /**
  * The public shape of a participant. The registry keeps its own mutable
- * shape for its writes; everyone else gets this, so state nobody saw a
- * `DomainEvent` for is state nobody outside the registry can change either.
+ * shape for its writes; everyone else gets this, so state outside the
+ * registry can never be changed except through one of its methods.
  */
 export interface Participant {
   readonly id: string

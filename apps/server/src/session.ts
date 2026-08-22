@@ -1,6 +1,6 @@
 import { PROTOCOL_VERSION, type ServerToClient } from '@m8/protocol'
 import { parseInbound } from '@m8/protocol/validate'
-import type { DomainEvent, Table, TableRegistry } from '@m8/core'
+import type { Table, TableRegistry } from '@m8/core'
 import type { Connection, Transport } from '@m8/transport'
 import { translateError, translateTable } from './translate.js'
 
@@ -13,9 +13,9 @@ interface Attachment {
 /**
  * Translates between the transport and the domain.
  *
- * The domain speaks DomainEvent and TableView; the wire speaks ServerToClient
- * and TableSnapshot. This class is the only place that knows both, which is
- * what keeps packages/core free of any notion that a network exists. The
+ * The domain speaks TableView; the wire speaks ServerToClient and
+ * TableSnapshot. This class is the only place that knows both, which is what
+ * keeps packages/core free of any notion that a network exists. The
  * field-by-field conversion between the two vocabularies itself lives in
  * translate.ts, kept separate so it can be tested and read on its own.
  */
@@ -125,7 +125,6 @@ export class Session {
           participantId: result.participant.id,
           token: result.participant.token,
         })
-        this.#applyEvents(result.events)
         this.#broadcast(result.table)
         return
       }
@@ -136,13 +135,12 @@ export class Session {
           connection.send({ type: 'error', code: 'not-allowed' })
           return
         }
-        const events = this.#registry.setProfile(
+        this.#registry.setProfile(
           attachment.code,
           attachment.participantId,
           message.nickname,
           message.avatarId,
         )
-        this.#applyEvents(events)
         this.#broadcastCode(attachment.code)
         return
       }
@@ -151,9 +149,8 @@ export class Session {
         const attachment = this.#attachments.get(connection.id)
         if (!attachment || attachment.role !== 'phone' || attachment.participantId === undefined) return
         this.#releaseParticipant(attachment.participantId, connection.id)
-        const events = this.#registry.removeParticipant(attachment.code, attachment.participantId)
+        this.#registry.removeParticipant(attachment.code, attachment.participantId)
         this.#attachments.delete(connection.id)
-        this.#applyEvents(events)
         this.#broadcastCode(attachment.code)
         return
       }
@@ -183,8 +180,7 @@ export class Session {
     if (this.#participantOwners.get(attachment.participantId) !== connection.id) return
 
     this.#participantOwners.delete(attachment.participantId)
-    const events = this.#registry.disconnectParticipant(attachment.code, attachment.participantId)
-    this.#applyEvents(events)
+    this.#registry.disconnectParticipant(attachment.code, attachment.participantId)
     this.#broadcastCode(attachment.code)
   }
 
@@ -206,13 +202,6 @@ export class Session {
       this.#participantOwners.delete(participantId)
     }
   }
-
-  /**
-   * Reserved for events that need a message of their own. Today every event is
-   * already reflected in the snapshot that follows it, because the server
-   * sends full state rather than diffs.
-   */
-  #applyEvents(_events: readonly DomainEvent[]): void {}
 
   #broadcastCode(code: string): void {
     const table = this.#registry.getTable(code)

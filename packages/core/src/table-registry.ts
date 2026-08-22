@@ -1,13 +1,12 @@
 import { isAvatarId } from '@m8/avatars'
 import type { Clock } from './clock.js'
-import type { DomainEvent } from './events.js'
 import type { IdSource } from './ids.js'
 import { generateTableCode, normalizeTableCode } from './table-code.js'
 import type { Rng } from './rng.js'
-import { createSeats, firstFreeSeat, seatOf } from './seats.js'
+import { canStart, createSeats, firstFreeSeat, occupiedCount, seatOf } from './seats.js'
 import type { Seat } from './seats.js'
 import type { Participant, Table, TablePhase } from './table.js'
-import type { DomainError, ParticipantView, TableView } from './views.js'
+import type { DeviceView, DomainError, ParticipantView, SeatView, TableView } from './views.js'
 
 /**
  * How many characters of a nickname are kept. The rule lives here, in the
@@ -56,16 +55,16 @@ export type OpenTableResult =
   | { readonly error: DomainError }
 
 export type JoinResult =
-  | { readonly table: Table; readonly participant: Participant; readonly events: DomainEvent[] }
+  | { readonly table: Table; readonly participant: Participant }
   | { readonly error: DomainError }
 
 /**
  * The registry's own writable shape. `Table` and `Participant` (exported to
  * everyone else) are readonly all the way down, so a consumer outside this
  * class can read a table but cannot mutate it without going through a method
- * that emits the `DomainEvent` describing the change. A `MutableTable` is
- * structurally assignable to a `Table` — same object, narrower type at the
- * boundary — which is why the public methods can just return one.
+ * on this class. A `MutableTable` is structurally assignable to a `Table` —
+ * same object, narrower type at the boundary — which is why the public
+ * methods can just return one.
  */
 interface MutableParticipant {
   readonly id: string
@@ -86,6 +85,13 @@ interface MutableTable {
   chosenGameId: string | null
   preview: { gameId: string; page: number } | null
   seats: readonly Seat[]
+  /**
+   * The chosen game's minimum, from its manifest — kept only here, never on
+   * the public `Table`, because nothing outside `deviceView` needs it: the
+   * manifest itself lives in `@m8/contract`, which this package never
+   * imports. `null` until a game is chosen.
+   */
+  seatsMin: number | null
 }
 
 /**
@@ -144,6 +150,7 @@ export class TableRegistry {
       chosenGameId: null,
       preview: null,
       seats: [],
+      seatsMin: null,
     }
     this.#tables.set(minted, table)
     return { table }
@@ -172,6 +179,7 @@ export class TableRegistry {
 
     table.chosenGameId = gameId
     table.seats = createSeats(seats.max)
+    table.seatsMin = seats.min
     this.#occupySeat(table, 1, participantId)
     table.preview = null
     table.phase = 'seating'
@@ -231,11 +239,7 @@ export class TableRegistry {
 
     if (returning) {
       returning.connected = true
-      return {
-        table,
-        participant: returning,
-        events: [{ type: 'participant-rejoined', code: table.code, participantId: returning.id }],
-      }
+      return { table, participant: returning }
     }
 
     const isFirstArrival = table.batonHolderId === null
@@ -264,36 +268,30 @@ export class TableRegistry {
     }
     table.participants.push(participant)
 
-    const events: DomainEvent[] = [
-      { type: 'participant-joined', code: table.code, participantId: participant.id },
-    ]
-
     if (isFirstArrival) {
       table.batonHolderId = participant.id
       table.phase = 'choosing-game'
-      events.push({ type: 'baton-granted', code: table.code, participantId: participant.id })
     } else if (seat) {
       this.#occupySeat(table, seat.number, participant.id)
     }
 
-    return { table, participant, events }
+    return { table, participant }
   }
 
-  disconnectParticipant(code: string, participantId: string): DomainEvent[] {
+  disconnectParticipant(code: string, participantId: string): void {
     const table = this.#findMutable(code)
     const participant = table?.participants.find((p) => p.id === participantId)
-    if (!table || !participant) return []
+    if (!table || !participant) return
 
     participant.connected = false
-    return [{ type: 'participant-disconnected', code: table.code, participantId }]
   }
 
-  removeParticipant(code: string, participantId: string): DomainEvent[] {
+  removeParticipant(code: string, participantId: string): void {
     const table = this.#findMutable(code)
-    if (!table) return []
+    if (!table) return
 
     const index = table.participants.findIndex((p) => p.id === participantId)
-    if (index === -1) return []
+    if (index === -1) return
 
     table.participants.splice(index, 1)
 
@@ -303,31 +301,23 @@ export class TableRegistry {
     const seat = seatOf(table.seats, participantId)
     if (seat) this.#occupySeat(table, seat.number, null)
 
-    const events: DomainEvent[] = [
-      { type: 'participant-left', code: table.code, participantId },
-    ]
-
-    if (table.batonHolderId !== participantId) return events
+    if (table.batonHolderId !== participantId) return
 
     // The baton is leased to the table, not carried by the person, so it moves
     // to whoever has been here longest rather than ending the session.
     const successor = table.participants[0]
     if (successor) {
       table.batonHolderId = successor.id
-      events.push({ type: 'baton-migrated', code: table.code, participantId: successor.id })
     } else {
       table.batonHolderId = null
       table.phase = 'awaiting-host'
-      events.push({ type: 'table-emptied', code: table.code })
     }
-
-    return events
   }
 
-  setProfile(code: string, participantId: string, nickname: string, avatarId: string): DomainEvent[] {
+  setProfile(code: string, participantId: string, nickname: string, avatarId: string): void {
     const table = this.#findMutable(code)
     const participant = table?.participants.find((p) => p.id === participantId)
-    if (!table || !participant) return []
+    if (!table || !participant) return
 
     const trimmed = nickname.trim()
     // A blank nickname carries no information about intent: the empty
@@ -335,17 +325,16 @@ export class TableRegistry {
     // yet", so accepting one here would make that sentinel ambiguous with a
     // deliberate choice. Treated as no change at all, not a change to an
     // empty nickname, so a stray submit cannot discard an avatar pick either.
-    if (trimmed === '') return []
+    if (trimmed === '') return
 
     // An id naming no avatar carries no intent either, and the server is the
     // only thing standing between a hand-written message and a value every
     // screen in the room then renders. Same rule as the blank nickname: not a
     // change to something else, no change at all.
-    if (!isAvatarId(avatarId)) return []
+    if (!isAvatarId(avatarId)) return
 
     participant.nickname = trimmed.slice(0, NICKNAME_MAX_LENGTH)
     participant.avatarId = avatarId
-    return [{ type: 'profile-changed', code: table.code, participantId }]
   }
 
   /** The full public view of a table. Tokens never appear here. */
@@ -357,8 +346,61 @@ export class TableRegistry {
       connected: p.connected,
       hasBaton: table.batonHolderId === p.id,
     }))
+    const byId = new Map(participants.map((p) => [p.id, p]))
 
-    return { code: table.code, phase: table.phase, participants }
+    const seats: SeatView[] = table.seats.map((seat) => ({
+      number: seat.number,
+      occupant: seat.occupantId === null ? null : byId.get(seat.occupantId) ?? null,
+    }))
+
+    return {
+      code: table.code,
+      phase: table.phase,
+      participants,
+      seats,
+      chosenGameId: table.chosenGameId,
+      preview: table.preview,
+      qrVisible: this.#qrVisible(table),
+    }
+  }
+
+  /**
+   * What one phone is told: decisions rather than data, and nothing of the
+   * table's. `canStart` and `playersNeeded` are computed here from the seats
+   * and the chosen game's minimum, so a rule that decides whether a match may
+   * begin exists in exactly one place rather than being reimplemented on the
+   * device.
+   */
+  deviceView(table: Table, participantId: string): DeviceView {
+    const mutable = this.#findMutable(table.code)
+    const seats = mutable?.seats ?? table.seats
+    const min = mutable?.seatsMin ?? null
+    const seat = seatOf(seats, participantId)
+    const hasBaton = table.batonHolderId === participantId
+
+    return {
+      participantId,
+      phase: table.phase,
+      seatNumber: seat?.number ?? null,
+      hasBaton,
+      canChooseGame: hasBaton,
+      canStart: min === null ? false : canStart(seats, min),
+      playersNeeded: min === null ? 0 : Math.max(0, min - occupiedCount(seats)),
+    }
+  }
+
+  /**
+   * Whether the large screen should show the joining QR right now, computed
+   * once so the television never has a rule of its own to disagree with.
+   * Mirrors exactly the arrivals `joinParticipant` itself admits: the very
+   * first (before anyone holds the baton), or anyone while a chosen game
+   * still has a free seat. Between those two moments — the host alone,
+   * before choosing a game — nobody else may join, so the code is not shown.
+   */
+  #qrVisible(table: Table): boolean {
+    if (table.batonHolderId === null) return true
+    if (table.chosenGameId === null) return false
+    return firstFreeSeat(table.seats) !== undefined
   }
 
   /** A code no live table holds, or undefined once the space is full. */

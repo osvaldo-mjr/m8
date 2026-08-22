@@ -32,6 +32,10 @@ describe('translateTable', () => {
         { id: 'p-1', nickname: 'Ana', avatarId: 'fox', connected: true, hasBaton: true },
         { id: 'p-2', nickname: '', avatarId: 'unset', connected: false, hasBaton: false },
       ],
+      seats: [],
+      chosenGameId: null,
+      preview: null,
+      qrVisible: false,
     }
 
     expect(translateTable(view)).toEqual({
@@ -45,7 +49,15 @@ describe('translateTable', () => {
   })
 
   it('produces an empty participant list from an empty table', () => {
-    const view: TableView = { code: 'ABCD', phase: 'awaiting-host', participants: [] }
+    const view: TableView = {
+      code: 'ABCD',
+      phase: 'awaiting-host',
+      participants: [],
+      seats: [],
+      chosenGameId: null,
+      preview: null,
+      qrVisible: true,
+    }
     expect(translateTable(view)).toEqual({ code: 'ABCD', phase: 'awaiting-host', participants: [] })
   })
 })

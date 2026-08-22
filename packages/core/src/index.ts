@@ -9,6 +9,5 @@ export { MAX_PARTICIPANTS, NICKNAME_MAX_LENGTH, TableRegistry } from './table-re
 export type { JoinResult, OpenTableResult, TableRegistryOptions } from './table-registry.js'
 export { canStart, createSeats, firstFreeSeat, occupiedCount, seatOf } from './seats.js'
 export type { Seat } from './seats.js'
-export type { DomainEvent } from './events.js'
 export type { Participant, Table, TablePhase } from './table.js'
-export type { DomainError, ParticipantView, TableView } from './views.js'
+export type { DeviceView, DomainError, ParticipantView, SeatView, TableView } from './views.js'
