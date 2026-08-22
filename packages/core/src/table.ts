@@ -1,3 +1,5 @@
+import type { Seat } from './seats.js'
+
 export type TablePhase =
   | 'awaiting-host'
   | 'choosing-game'
@@ -38,4 +40,7 @@ export interface Table {
   readonly round: number
   readonly chosenGameId: string | null
   readonly preview: { readonly gameId: string; readonly page: number } | null
+  /** Empty until a game is chosen — seats come from a game's manifest, so
+   * before a choice there is nothing to size them by. */
+  readonly seats: readonly Seat[]
 }

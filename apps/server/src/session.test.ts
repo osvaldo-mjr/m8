@@ -256,7 +256,18 @@ describe('a full table', () => {
     transport.receive('tv', { type: 'helloTable', protocolVersion: PROTOCOL_VERSION })
     const code = firstOfType('tv', 'tableReady').code
 
-    for (let i = 0; i < MAX_PARTICIPANTS; i += 1) {
+    transport.connect('phone-0')
+    transport.receive('phone-0', { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
+
+    // Only the host can join before a game is chosen. Choosing one directly
+    // through the registry stands in for the wire message a later task adds
+    // (see the working agreement: wiring chooseGame to the transport is out
+    // of scope here), so the rest of the table can still fill up to capacity.
+    const hostId = registry.getTable(code)?.batonHolderId
+    if (!hostId) throw new Error('host did not receive the baton')
+    registry.chooseGame(code, hostId, 'test-game', { min: 1, max: MAX_PARTICIPANTS })
+
+    for (let i = 1; i < MAX_PARTICIPANTS; i += 1) {
       transport.connect(`phone-${i}`)
       transport.receive(`phone-${i}`, { type: 'hello', protocolVersion: PROTOCOL_VERSION, code })
     }

@@ -4,7 +4,7 @@ import { FixedClock } from './clock.js'
 import { sequentialIds } from './ids.js'
 import { createRng } from './rng.js'
 import { MAX_PARTICIPANTS, TableRegistry } from './table-registry.js'
-import type { Table } from './table.js'
+import type { Participant, Table } from './table.js'
 import type { DomainError } from './views.js'
 
 /**
@@ -26,6 +26,17 @@ function makeRegistry(): TableRegistry {
     newToken: sequentialIds('t'),
     shard: 'A',
   })
+}
+
+/**
+ * A participant claiming a place at the table, with the refusable result
+ * unwrapped. Every test that merely needs someone seated says so through
+ * this, the same way `newTable` stands in for `openTable`.
+ */
+function join(registry: TableRegistry, code: string): Participant {
+  const result = registry.joinParticipant(code, undefined, undefined)
+  if ('error' in result) throw new Error(`Expected a join, got ${result.error}`)
+  return result.participant
 }
 
 describe('TableRegistry.openTable, opening a fresh table', () => {
@@ -128,8 +139,10 @@ describe('TableRegistry.joinParticipant', () => {
 
   it('does not give the baton to the second participant', () => {
     const first = registry.joinParticipant(code, undefined)
+    if ('error' in first) throw new Error('join failed')
+    registry.chooseGame(code, first.participant.id, 'tic-tac-toe', { min: 1, max: 2 })
     const second = registry.joinParticipant(code, undefined)
-    if ('error' in first || 'error' in second) throw new Error('join failed')
+    if ('error' in second) throw new Error('join failed')
 
     expect(second.table.batonHolderId).toBe(first.participant.id)
   })
@@ -198,8 +211,10 @@ describe('TableRegistry.disconnectParticipant', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
+    if ('error' in host) throw new Error('join failed')
+    registry.chooseGame(code, host.participant.id, 'tic-tac-toe', { min: 1, max: 2 })
     const second = registry.joinParticipant(code, undefined)
-    if ('error' in host || 'error' in second) throw new Error('join failed')
+    if ('error' in second) throw new Error('join failed')
 
     const events = registry.disconnectParticipant(code, second.participant.id)
 
@@ -213,8 +228,10 @@ describe('TableRegistry.removeParticipant', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
+    if ('error' in host) throw new Error('join failed')
+    registry.chooseGame(code, host.participant.id, 'tic-tac-toe', { min: 1, max: 2 })
     const second = registry.joinParticipant(code, undefined)
-    if ('error' in host || 'error' in second) throw new Error('join failed')
+    if ('error' in second) throw new Error('join failed')
 
     const events = registry.removeParticipant(code, host.participant.id)
 
@@ -244,8 +261,10 @@ describe('TableRegistry.removeParticipant', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
+    if ('error' in host) throw new Error('join failed')
+    registry.chooseGame(code, host.participant.id, 'tic-tac-toe', { min: 1, max: 2 })
     const second = registry.joinParticipant(code, undefined)
-    if ('error' in host || 'error' in second) throw new Error('join failed')
+    if ('error' in second) throw new Error('join failed')
 
     const events = registry.removeParticipant(code, second.participant.id)
 
@@ -426,9 +445,11 @@ describe('TableRegistry.snapshot', () => {
     })
     const table = newTable(registry)
     const first = registry.joinParticipant(table.code, undefined)
+    if ('error' in first) throw new Error('join failed')
+    registry.chooseGame(table.code, first.participant.id, 'tic-tac-toe', { min: 1, max: 3 })
     const second = registry.joinParticipant(table.code, undefined)
     const third = registry.joinParticipant(table.code, undefined)
-    if ('error' in first || 'error' in second || 'error' in third) {
+    if ('error' in second || 'error' in third) {
       throw new Error('join failed')
     }
 
@@ -468,6 +489,7 @@ describe('TableRegistry reads the clock per operation', () => {
     expect(table.createdAt).toBe(1_000)
     expect(first.participant.joinedAt).toBe(1_000)
 
+    registry.chooseGame(table.code, first.participant.id, 'tic-tac-toe', { min: 1, max: 2 })
     clock.advance(5_000)
     const second = registry.joinParticipant(table.code, undefined)
     if ('error' in second) throw new Error(second.error)
@@ -499,8 +521,11 @@ describe('TableRegistry capacity', () => {
   it('fills up to MAX_PARTICIPANTS', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
+    const host = registry.joinParticipant(code, undefined)
+    if ('error' in host) throw new Error(host.error)
+    registry.chooseGame(code, host.participant.id, 'tic-tac-toe', { min: 1, max: MAX_PARTICIPANTS })
 
-    for (let i = 0; i < MAX_PARTICIPANTS; i += 1) {
+    for (let i = 1; i < MAX_PARTICIPANTS; i += 1) {
       const result = registry.joinParticipant(code, undefined)
       if ('error' in result) throw new Error(`join ${i} failed: ${result.error}`)
     }
@@ -511,7 +536,10 @@ describe('TableRegistry capacity', () => {
   it('refuses the participant after that with table-full', () => {
     const registry = makeRegistry()
     const code = newTable(registry).code
-    for (let i = 0; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
+    const host = registry.joinParticipant(code, undefined)
+    if ('error' in host) throw new Error(host.error)
+    registry.chooseGame(code, host.participant.id, 'tic-tac-toe', { min: 1, max: MAX_PARTICIPANTS })
+    for (let i = 1; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
 
     const overflow = registry.joinParticipant(code, undefined)
 
@@ -524,6 +552,7 @@ describe('TableRegistry capacity', () => {
     const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     if ('error' in host) throw new Error(host.error)
+    registry.chooseGame(code, host.participant.id, 'tic-tac-toe', { min: 1, max: MAX_PARTICIPANTS })
     for (let i = 1; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
     registry.disconnectParticipant(code, host.participant.id)
 
@@ -540,6 +569,7 @@ describe('TableRegistry capacity', () => {
     const code = newTable(registry).code
     const host = registry.joinParticipant(code, undefined)
     if ('error' in host) throw new Error(host.error)
+    registry.chooseGame(code, host.participant.id, 'tic-tac-toe', { min: 1, max: MAX_PARTICIPANTS })
     for (let i = 1; i < MAX_PARTICIPANTS; i += 1) registry.joinParticipant(code, undefined)
 
     registry.removeParticipant(code, host.participant.id)
@@ -621,5 +651,100 @@ describe('TableRegistry code exhaustion', () => {
     // The refusal is about minting a code, not about serving a screen that
     // already has one: a television that reloads must still find its table.
     expect(registry.openTable(existing.code)).toEqual({ table: existing })
+  })
+})
+
+const TIC_TAC_TOE = { min: 2, max: 2 }
+
+describe('choosing a game', () => {
+  it('is refused for anyone without the baton', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    join(registry, code)
+
+    // Not a real second participant: joining before a game is chosen is
+    // itself refused (see 'joining once a game is chosen' below), so a
+    // non-baton id stands in to exercise chooseGame's own gate in isolation.
+    expect(registry.chooseGame(code, 'not-the-host', 'tic-tac-toe', TIC_TAC_TOE)).toEqual({
+      error: 'not-allowed',
+    })
+  })
+
+  it('creates the game maximum in seats and moves to seating', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const table = registry.getTable(code)!
+    expect(table.phase).toBe('seating')
+    expect(table.seats).toHaveLength(2)
+  })
+
+  it('seats the host, because wanting to play is the common case', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    expect(registry.getTable(code)!.seats[0]?.occupantId).toBe(host.id)
+  })
+})
+
+describe('the host stepping out', () => {
+  it('frees the seat', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    registry.setHostPlaying(code, host.id, false)
+    expect(registry.getTable(code)!.seats[0]?.occupantId).toBeNull()
+  })
+
+  it('lets him sit again while a seat is free', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    registry.setHostPlaying(code, host.id, false)
+    registry.setHostPlaying(code, host.id, true)
+    expect(registry.getTable(code)!.seats[0]?.occupantId).toBe(host.id)
+  })
+
+  it('refuses to seat him when the table is full', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    registry.setHostPlaying(code, host.id, false)
+    join(registry, code)
+    join(registry, code)
+    expect(registry.setHostPlaying(code, host.id, true)).toEqual({ error: 'table-full' })
+  })
+})
+
+describe('joining once a game is chosen', () => {
+  it('is refused before a game is chosen', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    join(registry, code)
+    expect(registry.joinParticipant(code, undefined, undefined)).toEqual({ error: 'not-allowed' })
+  })
+
+  it('claims a seat on arrival, before any nickname is set', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    const second = join(registry, code)
+    expect(registry.getTable(code)!.seats[1]?.occupantId).toBe(second.id)
+    expect(second.nickname).toBe('')
+  })
+
+  it('refuses arrival number three at a two-seat table', () => {
+    const registry = makeRegistry()
+    const code = newTable(registry).code
+    const host = join(registry, code)
+    registry.chooseGame(code, host.id, 'tic-tac-toe', TIC_TAC_TOE)
+    join(registry, code)
+    expect(registry.joinParticipant(code, undefined, undefined)).toEqual({ error: 'table-full' })
   })
 })

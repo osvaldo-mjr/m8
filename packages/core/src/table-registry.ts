@@ -4,6 +4,8 @@ import type { DomainEvent } from './events.js'
 import type { IdSource } from './ids.js'
 import { generateTableCode, normalizeTableCode } from './table-code.js'
 import type { Rng } from './rng.js'
+import { createSeats, firstFreeSeat, seatOf } from './seats.js'
+import type { Seat } from './seats.js'
 import type { Participant, Table, TablePhase } from './table.js'
 import type { DomainError, ParticipantView, TableView } from './views.js'
 
@@ -83,6 +85,7 @@ interface MutableTable {
   round: number
   chosenGameId: string | null
   preview: { gameId: string; page: number } | null
+  seats: readonly Seat[]
 }
 
 /**
@@ -140,9 +143,59 @@ export class TableRegistry {
       round: 1,
       chosenGameId: null,
       preview: null,
+      seats: [],
     }
     this.#tables.set(minted, table)
     return { table }
+  }
+
+  /**
+   * Only the host is at the table before a game is chosen. Creating the
+   * game's maximum in seats and seating the baton holder in seat 1 happens
+   * here, in the same call, because wanting to play is the common case.
+   */
+  chooseGame(
+    code: string,
+    participantId: string,
+    gameId: string,
+    seats: { readonly min: number; readonly max: number },
+  ): { readonly error: DomainError } | undefined {
+    const table = this.#findMutable(code)
+    if (!table) return { error: 'unknown-table' }
+    if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+
+    table.chosenGameId = gameId
+    table.seats = createSeats(seats.max)
+    this.#occupySeat(table, 1, participantId)
+    table.preview = null
+    table.phase = 'seating'
+    return undefined
+  }
+
+  /**
+   * The host stepping out of their seat and back into it. The switch starts
+   * on, because chooseGame already seated him. Stepping back in claims
+   * whatever seat is free, not necessarily the one he left — a chair, not a
+   * name plate.
+   */
+  setHostPlaying(
+    code: string,
+    participantId: string,
+    playing: boolean,
+  ): { readonly error: DomainError } | undefined {
+    const table = this.#findMutable(code)
+    if (!table) return { error: 'unknown-table' }
+    if (table.batonHolderId !== participantId) return { error: 'not-allowed' }
+
+    if (playing) {
+      const seat = firstFreeSeat(table.seats)
+      if (!seat) return { error: 'table-full' }
+      this.#occupySeat(table, seat.number, participantId)
+    } else {
+      const seat = seatOf(table.seats, participantId)
+      if (seat) this.#occupySeat(table, seat.number, null)
+    }
+    return undefined
   }
 
   joinParticipant(code: string, token: string | undefined, round?: number): JoinResult {
@@ -175,9 +228,21 @@ export class TableRegistry {
       }
     }
 
+    const isFirstArrival = table.batonHolderId === null
+
+    // Only the host is at the table before a game is chosen. Claiming the
+    // seat only once a nickname is confirmed would let two people type for
+    // the last chair and one discover the loss on pressing confirm, so a
+    // later arrival claims a seat here, on arrival, before the host has even
+    // created any.
+    if (!isFirstArrival && table.chosenGameId === null) return { error: 'not-allowed' }
+
     // Checked only on this path: a returning token takes no new place,
     // because the participant it names already occupies one.
     if (table.participants.length >= MAX_PARTICIPANTS) return { error: 'table-full' }
+
+    const seat = isFirstArrival ? undefined : firstFreeSeat(table.seats)
+    if (!isFirstArrival && !seat) return { error: 'table-full' }
 
     const participant: MutableParticipant = {
       id: this.#newParticipantId(),
@@ -193,10 +258,12 @@ export class TableRegistry {
       { type: 'participant-joined', code: table.code, participantId: participant.id },
     ]
 
-    if (table.batonHolderId === null) {
+    if (isFirstArrival) {
       table.batonHolderId = participant.id
       table.phase = 'choosing-game'
       events.push({ type: 'baton-granted', code: table.code, participantId: participant.id })
+    } else if (seat) {
+      this.#occupySeat(table, seat.number, participant.id)
     }
 
     return { table, participant, events }
@@ -219,6 +286,13 @@ export class TableRegistry {
     if (index === -1) return []
 
     table.participants.splice(index, 1)
+
+    // A departing participant leaves no ghost in the chair: the seat is a
+    // role, not a person, so it is vacated the moment nobody fills it, ready
+    // for the next arrival's firstFreeSeat.
+    const seat = seatOf(table.seats, participantId)
+    if (seat) this.#occupySeat(table, seat.number, null)
+
     const events: DomainEvent[] = [
       { type: 'participant-left', code: table.code, participantId },
     ]
@@ -290,5 +364,16 @@ export class TableRegistry {
   #findMutable(code: string): MutableTable | undefined {
     const normalized = normalizeTableCode(code)
     return normalized === null ? undefined : this.#tables.get(normalized)
+  }
+
+  /**
+   * `Seat` is readonly all the way down, like everything else this class
+   * hands out, so occupying or vacating one replaces it rather than writing
+   * through it.
+   */
+  #occupySeat(table: MutableTable, seatNumber: number, occupantId: string | null): void {
+    table.seats = table.seats.map((seat) =>
+      seat.number === seatNumber ? { number: seat.number, occupantId } : seat,
+    )
   }
 }
